@@ -1,0 +1,31 @@
+{
+  "volo": {
+    "baseUrl": "js/lib",
+    "dependencies": {
+      "require": "github:jrburke/requirejs/2.1.4",
+      "jquery": "github:jquery/jquery/1.8.3",
+      "class": "github:anchorjs/class/master",
+      "selector": "github:anchorjs/selector/master",
+      "dom": "github:anchorjs/dom/master",
+      "events": "github:anchorjs/events/master",
+      "postmessage": "github:anchorjs/postmessage/master",
+      "notifications": "github:jaredhanson/node-notifications/amd",
+      "jsonrpc-postmessage": "github:jaredhanson/jsonrpc-postmessage/master",
+      "xmlrpc-getcapabilities": "github:jaredhanson/xmlrpc-getcapabilities/master",
+      "xmlrpc-introspect": "github:jaredhanson/xmlrpc-introspect/master",
+      "mustache": "github:janl/mustache.js/0.7.2",
+      "render": "github:sailjs/render/master",
+      "render-mustache": "github:sailjs/render-mustache/master",
+      "dib": "github:sailjs/dib/master",
+      "controller": "github:sailjs/controller/master",
+      "view": "github:sailjs/view/master",
+      "overlay": "github:sailjs/overlay/master",
+      "dialog": "github:sailjs/dialog/master",
+      "tip": "github:sailjs/tip/master",
+      "popover": "github:sailjs/popover/master",
+      "confirmpopover": "github:sailjs/confirmpopover/master",
+      "carousel": "github:sailjs/carousel/master",
+      "wizard": "github:sailjs/wizard/master"
+    }
+  }
+}

@@ -80,6 +80,9 @@ class SifteoRunner:
 
         for cid in sorted(cube_ids):
             self.add_cube(cid)
+            # Small pause between cubes so the dongle can finish
+            # relaying initialization commands over radio
+            time.sleep(0.15)
 
         return True
 

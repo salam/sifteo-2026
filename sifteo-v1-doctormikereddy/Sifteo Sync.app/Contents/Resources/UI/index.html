@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Sifteo Sync</title>
+    <link rel="stylesheet" href="vendor/bootstrap/2.1.1/css/bootstrap.css"/>
+    <link rel="stylesheet" href="css/ui.css"/>
+    <link rel="stylesheet" href="css/desktop.css"/>
+    <link rel="stylesheet" href="css/app.css"/>
+    <link rel="stylesheet" href="css/sifteo.css"/>
+    <script data-main="js/main" src="js/lib/require.js"></script>
+  </head>
+  <body>
+    <div id="main" class="container-full">
+    </div> <!-- /container -->
+    
+    
+    <script type="text/template" id="register-dlg-template">
+      <div id="register-dialog" class="modal hide fade in">
+      <div class="modal-body">
+        <div class="head">
+          <h4 class="small">Sign Up</h4>
+          <p>More games await!</p>
+        </div>
+        <form class="form-horizontal">
+          <div class="control-group">
+            <label class="control-label" for="givenName">First Name</label>
+            <div class="controls">
+              <input type="text" name="name[given_name]" id="givenName" class="input-large">
+            </div>
+          </div>
+          <div class="control-group">
+            <label class="control-label" for="familyName">Last Name</label>
+            <div class="controls">
+              <input type="text" name="name[family_name]" id="familyName" class="input-large">
+            </div>
+          </div>
+          <div class="control-group">
+            <label class="control-label" for="email">Email</label>
+            <div class="controls">
+              <input type="text" name="email" id="email" class="input-large">
+            </div>
+          </div>
+          <div class="control-group">
+            <label class="control-label" for="password">Password</label>
+            <div class="controls">
+              <input type="password" name="password" id="password" class="input-large">
+            </div>
+          </div>
+          <div class="control-group">
+            <label class="control-label" for="passwordConfirmation">Confirm Password</label>
+            <div class="controls">
+              <input type="password" name="password_confirmation" id="passwordConfirmation" class="input-large">
+            </div>
+          </div>
+          <div class="control-group">
+            <label class="control-label" for="birthYear">Year of Birth</label>
+            <div class="controls">
+              <select id="birthYear" name="birthday[year]" class="input-small">
+                <option value="2012">2012</option>
+                <option value="2011">2011</option>
+                <option value="2010">2010</option>
+                <option value="2009">2009</option>
+                <option value="2008">2008</option>
+                <option value="2007">2007</option>
+                <option value="2006">2006</option>
+                <option value="2005">2005</option>
+                <option value="2004">2004</option>
+                <option value="2003">2003</option>
+                <option value="2002">2002</option>
+                <option value="2001">2001</option>
+                <option value="2000">2000</option>
+                <option value="1999">1999</option>
+                <option value="1998">1998</option>
+                <option value="1997">1997</option>
+                <option value="1996">1996</option>
+                <option value="1995">1995</option>
+                <option value="1994">1994</option>
+                <option value="1993">1993</option>
+                <option value="1992">1992</option>
+                <option value="1991">1991</option>
+                <option value="1990">1990</option>
+                <option value="1989">1989</option>
+                <option value="1988">1988</option>
+                <option value="1987">1987</option>
+                <option value="1986">1986</option>
+                <option value="1985">1985</option>
+                <option value="1984">1984</option>
+                <option value="1983">1983</option>
+                <option value="1982">1982</option>
+                <option value="1981" selected="true">1981</option>
+                <option value="1980">1980</option>
+                <option value="1979">1979</option>
+                <option value="1978">1978</option>
+                <option value="1977">1977</option>
+                <option value="1976">1976</option>
+                <option value="1975">1975</option>
+                <option value="1974">1974</option>
+                <option value="1973">1973</option>
+                <option value="1972">1972</option>
+                <option value="1971">1971</option>
+                <option value="1970">1970</option>
+                <option value="1969">1969</option>
+                <option value="1968">1968</option>
+                <option value="1967">1967</option>
+                <option value="1966">1966</option>
+                <option value="1965">1965</option>
+                <option value="1964">1964</option>
+                <option value="1963">1963</option>
+                <option value="1962">1962</option>
+                <option value="1961">1961</option>
+                <option value="1960">1960</option>
+                <option value="1959">1959</option>
+                <option value="1958">1958</option>
+                <option value="1957">1957</option>
+                <option value="1956">1956</option>
+                <option value="1955">1955</option>
+                <option value="1954">1954</option>
+                <option value="1953">1953</option>
+                <option value="1952">1952</option>
+                <option value="1951">1951</option>
+                <option value="1950">1950</option>
+                <option value="1949">1949</option>
+                <option value="1948">1948</option>
+                <option value="1947">1947</option>
+                <option value="1946">1946</option>
+                <option value="1945">1945</option>
+                <option value="1944">1944</option>
+                <option value="1943">1943</option>
+                <option value="1942">1942</option>
+                <option value="1941">1941</option>
+                <option value="1940">1940</option>
+                <option value="1939">1939</option>
+                <option value="1938">1938</option>
+                <option value="1937">1937</option>
+                <option value="1936">1936</option>
+                <option value="1935">1935</option>
+                <option value="1934">1934</option>
+                <option value="1933">1933</option>
+                <option value="1932">1932</option>
+                <option value="1931">1931</option>
+                <option value="1930">1930</option>
+                <option value="1929">1929</option>
+                <option value="1928">1928</option>
+                <option value="1927">1927</option>
+                <option value="1926">1926</option>
+                <option value="1925">1925</option>
+                <option value="1924">1924</option>
+                <option value="1923">1923</option>
+                <option value="1922">1922</option>
+                <option value="1921">1921</option>
+                <option value="1920">1920</option>
+                <option value="1919">1919</option>
+                <option value="1918">1918</option>
+                <option value="1917">1917</option>
+                <option value="1916">1916</option>
+                <option value="1915">1915</option>
+                <option value="1914">1914</option>
+                <option value="1913">1913</option>
+                <option value="1912">1912</option>
+                <option value="1911">1911</option>
+                <option value="1910">1910</option>
+                <option value="1909">1909</option>
+                <option value="1908">1908</option>
+                <option value="1907">1907</option>
+                <option value="1906">1906</option>
+                <option value="1905">1905</option>
+                <option value="1904">1904</option>
+                <option value="1903">1903</option>
+                <option value="1902">1902</option>
+                <option value="1901">1901</option>
+                <option value="1900">1900</option>
+                <option value="1899">1899</option>
+                <option value="1898">1898</option>
+                <option value="1897">1897</option>
+                <option value="1896">1896</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <button type="submit" class="btn btn-primary pull-right">Sign Up</button>
+            <p class="dlg-status pull-right"></p>
+          </div>
+        </form>
+      </div>
+      </div>
+    </script>
+    
+
+    <script type="text/template" id="login-template">
+      <div id="login-dialog" class="modal hide fade in">
+        <div class="modal-body">
+          <img class="emblem" src="img/emblem.png">
+          <div class="tip hide">
+            <p class="text"><span class="strong">Hello!</span> <span class="help-text"></span></p>
+            <img class="cube-buddy suli" src="img/cube-buddies/suli.png"/>
+          </div>
+          <form>
+            <fieldset>
+              <div class="controls input-prepend row-fluid">
+                <span class="add-on"><i class="icon-user"></i></span><input class="span11" type="text" name="username" placeholder="Email">
+              </div>
+              <div class="controls input-prepend row-fluid">
+                <span class="add-on"><i class="icon-asterisk"></i></span><input class="span11" type="password" name="password" placeholder="Password">
+              </div>
+            </fieldset>
+            <div>
+              <a href="#register" class="pull-left">Create an account &raquo;</a>
+              <button type="submit" class="btn btn-primary pull-right">Log In</button>
+              <p class="dlg-status pull-right"></p>
+            </div>
+          </form>
+        </div>
+      </div>
+    </script>
+    
+    
+    
+    <!-- application templates -->
+    <script type="text/template" id="menu-template">
+      <div class="navbar navbar-fixed-top navbar-inverse">
+        <div class="navbar-inner">
+          <div class="container">
+            <a class="brand" href="#"></a>
+            <div class="menubar pull-right">
+              <div id="mb-login" class="mb-icon">
+                <a href="#login" class="btn btn-primary">Log In</a>
+              </div>
+              <div id="mb-account" class="mb-icon">
+                <a href="#account" class="username">user@example.com</a>
+              </div>
+              <div id="mb-shop" class="mb-icon">
+                <div class="credits">
+                  <span class="amount">0</span> <span class="unit">credits</span>
+                </div>
+                <div>
+                  <a href="#shop"></a>
+                  <a href="#redeem-code"></a>
+                </div>
+              </div>
+              <div id="mb-devices" class="mb-icon">
+                <a href="#device" class="sift-device-base disconnected"></a>
+              </div>
+            </div>
+          </div>
+        </div> <!-- /.navbar-inner -->
+      </div> <!-- /.navbar -->
+    </script>
+    
+    <!-- library templates -->
+    
+    <script type="text/template" id="library-template">
+      <div>
+        <div class="app-carousel carousel slide">
+          <div class="carousel-inner">
+          </div>
+          <a href="#" class="carousel-control left">&lsaquo;</a>
+          <a href="#" class="carousel-control right">&rsaquo;</a>
+          <!--
+          <div class="left-hover"><a href="#" class="carousel-control left">&lsaquo;</a></div>
+          <div class="right-hover"><a href="#" class="carousel-control right">&rsaquo;</a></div>
+          -->
+        </div>
+      
+        <div id="launcher-wrapper">
+        <div id="launcher" class="launcher">
+          <div class="x-inner">
+            <div class="body">
+              <!--<div class="active page"></div>-->
+              <div class="items">
+              </div>
+            </div>
+            <a class="control prev" href="#launcher"></a>
+            <a class="control next" href="#launcher"></a>
+          </div>
+        </div>
+        </div>
+      </div>
+    </script>
+    
+    <script type="text/template" id="app-template">
+      <div class="item app">
+        <!-- TODO: remove this -->
+        <h2 class="title hide">{{title}} - {{id}}</h2>
+        <iframe class="booklet" src="{{bookletURL}}" scrolling="no"></iframe>
+        
+        <div class="actions">
+          <div class="app-actions-normal x-is-local">
+            <a href="#" class="action-btn green app-action-install js-install"><span class="inner"><img src="img/en/install-game.png" width="90" height="9"/></span></a>
+            <a href="#" class="action-btn orange app-action-purchase js-purchase"><span class="inner"><span class="price">{{price}}</span></span></a>
+            <a href="#" class="action-btn orange app-action-download js-download"><span class="inner"><span class="text">Download</span></span></a>
+          </div>
+          <div class="app-actions-demoable x-is-demo-local">
+            <div class="action-btn-group demo-action-claim">
+              <a href="#" class="action-btn orange js-purchase"><span class="inner"><span class="price">{{price}}</span></span></a>
+              <a href="#" class="action-btn blue js-purchase-demo"><span class="inner"><img src="img/en/free-demo.png" width="71" height="9"/></span></a>
+            </div>
+            <div class="action-btn-group demo-action-download">
+              <a href="#" class="action-btn orange js-purchase"><span class="inner"><span class="price">{{price}}</span></span></a>
+              <a href="#" class="action-btn blue js-download-demo"><span class="inner"><img src="img/en/free-demo.png" width="71" height="9"/></span></a>
+            </div>
+            <div class="action-btn-group demo-action-install">
+              <a href="#" class="action-btn orange js-purchase"><span class="inner"><span class="price">{{price}}</span></span></a>
+              <a href="#" class="action-btn green js-install-demo"><span class="inner"><img src="img/en/install-demo.png" width="91" height="9"/></span></a>
+            </div>
+          </div>
+          
+          <!-- Game Only -->
+          <!--
+          <a href="#" class="action-btn orange x-cmd-purchase"><span class="inner"><span class="price">{{price}}</span></span></a>
+          <a href="#" class="action-btn orange disabled x-cmd-purchase"><span class="inner"><span class="price">{{price}}</span></span></a>
+          <a href="#" class="action-btn orange x-cmd-download"><span class="inner"><span class="text">Download Game</span></span></a>
+          <a href="#" class="action-btn orange disabled x-cmd-download"><span class="inner"><span class="text">Download Game</span></span></a>
+          <a href="#" class="action-btn green x-cmd-install"><span class="inner"><img src="img/en/install-game.png" width="90" height="9" class="install"></span></a>
+          <a href="#" class="action-btn green disabled x-cmd-install"><span class="inner"><img src="img/en/install-game.png" width="90" height="9"/></span></a>
+          <a href="#" class="action-btn orange disabled x-cmd-download"><span class="inner"><span class="text">Installed</span></span></a>
+          -->
+          
+          <!-- Full and Demo -->
+          <!--
+          <div class="action-btn-group">
+            <a href="#" class="action-btn orange x-cmd-purchase"><span class="inner"><span class="price">{{price}}</span></span></a>
+            <a href="#" class="action-btn blue x-cmd-purchase"><span class="inner"><img src="img/en/free-demo.png" width="71" height="9"/></span></a>
+          </div>
+          <div class="action-btn-group">
+            <a href="#" class="action-btn orange x-cmd-purchase"><span class="inner"><span class="price">{{price}}</span></span></a>
+            <a href="#" class="action-btn blue disabled x-cmd-purchase"><span class="inner"><img src="img/en/free-demo.png" width="71" height="9"/></span></a>
+          </div>
+          <div class="action-btn-group">
+            <a href="#" class="action-btn orange x-cmd-purchase"><span class="inner"><span class="price">{{price}}</span></span></a>
+            <a href="#" class="action-btn green x-cmd-purchase"><span class="inner"><img src="img/en/install-demo.png" width="91" height="9"/></span></a>
+          </div>
+          <div class="action-btn-group">
+            <a href="#" class="action-btn orange x-cmd-purchase"><span class="inner"><span class="price">{{price}}</span></span></a>
+            <a href="#" class="action-btn green disabled x-cmd-purchase"><span class="inner"><img src="img/en/install-demo.png" width="91" height="9"/></span></a>
+          </div>
+          <div class="action-btn-group">
+            <a href="#" class="action-btn orange x-cmd-purchase"><span class="inner"><span class="price">{{price}}</span></span></a>
+            <a href="#" class="action-btn green disabled x-cmd-purchase"><span class="inner"><span class="text">Installed</span></span></a>
+          </div>
+          -->
+          
+          <!-- Full and Demo, Buy Full -->
+          <!--
+          <div class="action-btn-group">
+            <a href="#" class="action-btn orange x-cmd-purchase"><span class="inner"><span class="price">{{price}}</span></span></a>
+            <a href="#" class="action-btn blue x-cmd-purchase"><span class="inner"><img src="img/en/free-demo.png" width="71" height="9"/></span></a>
+          </div>
+          <a href="#" class="action-btn orange disabled x-cmd-purchase"><span class="inner"><span class="price">{{price}}</span></span></a>
+          <a href="#" class="action-btn green x-cmd-install"><span class="inner"><img src="img/en/install-game.png" width="90" height="9" class="install"></span></a>
+          <a href="#" class="action-btn green disabled x-cmd-install"><span class="inner"><img src="img/en/install-game.png" width="90" height="9"/></span></a>
+          <a href="#" class="action-btn orange disabled x-cmd-download"><span class="inner"><span class="text">Installed</span></span></a>
+          -->
+          
+        </div>
+      </div>
+    </script>
+    
+    <script type="text/template" id="app-icon-template">
+      <div class="item">
+        <a href="#">
+          <img src="{{iconURL}}" width="96" height="96"/>
+          <div class="ribbon x-bonus"></div>
+          <div class="progress progress-info progress-striped x-active">
+            <div class="bar" style="width: 0%;"></div>
+          </div>
+        </a>
+      </div>
+    </script>
+    
+    
+    <!-- Device Templates -->
+    <script type="text/template" id="base-device-template">
+      <div class="wizard">
+        <form class="form-horizontal">
+          <div class="wizard-body">
+            <div class="control-group">
+              <label class="control-label" for="dev-form-name">Name</label>
+              <div class="controls">
+                <input type="text" name="name" value="{{name}}" id="dev-form-name" class="input-xlarge">
+              </div>
+            </div>
+            <ul class="nav nav-tabs">
+              <li class="active"><a href="#device-apps" data-toggle="tab">Games</a></li>
+              <li><a href="#device-cubes" data-toggle="tab">Cubes</a></li>
+              <li><a href="#device-info" data-toggle="tab">Info</a></li>
+            </ul>
+            <div class="tab-content">
+            </div>
+          </div>
+          <div class="wizard-footer">
+            <a href="#" class="btn cmd-close">Close</a>
+          </div>
+        </form>
+      </div>
+    </script>
+    
+    <script type="text/template" id="base-device-info-tab-template">
+      <div id="device-info" class="tab-pane">
+        <dl class="dl-horizontal">
+          <dt>Firmware</dt>
+          <dd><span class="val-firmware-version">{{firmwareVersion}}</span></dd>
+          <dt>Launcher</dt>
+          <dd><span class="val-launcher-version"></span></dd>
+          <dt>Storage</dt>
+          <dd><span class="val-storage-available">{{formattedBytesAvailable}}</span> MB free out of <span class="val-storage-size">{{formattedSize}}</span> MB</dd>
+        </dl>
+      </div>
+    </script>
+    
+    <script type="text/template" id="base-device-apps-tab-template">
+      <div id="device-apps" class="tab-pane active">
+        <dl class="dl-horizontal device-apps">
+        </dl>
+      </div>
+    </script>
+    
+    <script type="text/template" id="base-device-app-item-template">
+      <dt><!--<img src="unknown.png">--></dt>
+      <dd>
+        <div class="info">
+          <span class="val-title"><strong>{{title}}</strong></span> <span class="val-version">{{version}}</span><br/>
+          <span class="val-id"><small>{{id}}</small></span> - <span class="val-size"><small>{{formattedSize}}</small></span> <span class="val-size-unit"><small>{{formattedSizeUnit}}</small></span><br/>
+        </div>
+        <div class="action">
+          <span><a href="#" class="cmd-uninstall">Remove</a></span>
+        </div>
+      </dd>
+    </script>
+    
+    <script type="text/template" id="base-device-cubes-tab-template">
+      <div id="device-cubes" class="tab-pane">
+        <p><span class="val-pairings-count">{{count}}</span> cubes paired</p>
+        <!--
+        <ol id="cube-list" class="x-unstyled">
+        </ol>
+        -->
+        <a href="#" class="btn btn-small btn-warning btn-block cmd-unpair">Unpair All</a>
+      </div>
+    </script>
+    
+    <script type="text/template" id="base-device-cube-item-template">
+      <li id="device-cubes-entry">
+        <span class="val-hwid">{{hwid}}</span>
+      </li>
+    </script>
+    
+    
+    <!-- account templates -->
+    <script type="text/template" id="account-template">
+      <div class="wizard">
+        <form id="account-form" class="form-horizontal">
+          <div class="wizard-body">
+          </div>
+          <div class="wizard-footer">
+            <a href="#" class="btn btn-inverse pull-left cmd-logout">Log Out</a>
+            <button type="submit" class="btn btn-primary next">Submit</button>
+          </div>
+        </form>
+      </div>
+    </script>
+    
+    <script type="text/template" id="account-step-details-template">
+      <div>
+          <div class="tabbable">
+            <ul class="nav nav-tabs">
+              <li class="active"><a href="#account-tab-profile" data-toggle="tab">Profile</a></li>
+              <li class=""><a href="#account-tab-password" data-toggle="tab">Password</a></li>
+            </ul>
+            <div class="tab-content">
+              <div id="account-tab-profile" class="tab-pane active">
+                <div class="control-group">
+                  <label class="control-label" for="acct-form-name-given-name">First Name</label>
+                  <div class="controls">
+                    <input type="text" name="name[given_name]" id="acct-form-name-given-name" class="input-xlarge">
+                  </div>
+                </div>
+                <div class="control-group">
+                  <label class="control-label" for="acct-form-name-family-name">Last Name</label>
+                  <div class="controls">
+                    <input type="text" name="name[family_name]" id="acct-form-name-family-name" class="input-xlarge">
+                  </div>
+                </div>
+                <div class="control-group">
+                  <label class="control-label" for="acct-form-email">Email</label>
+                  <div class="controls">
+                    <input type="text" name="email" id="acct-form-email" class="input-xlarge">
+                  </div>
+                </div>
+                <div class="control-group">
+                  <div class="controls">
+                    <label class="checkbox">
+                      <input type="checkbox" name="subscribe"> Send me Sifteo news
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div id="account-tab-password" class="tab-pane">
+                <div class="control-group">
+                  <label class="control-label" for="acct-form-password">Current Password</label>
+                  <div class="controls">
+                    <input type="password" name="password" id="acct-form-password" class="input-xlarge">
+                  </div>
+                </div>
+                <div class="control-group">
+                  <label class="control-label" for="acct-form-new-password">New Password</label>
+                  <div class="controls">
+                    <input type="password" name="new_password" id="acct-form-new-password" class="input-xlarge">
+                  </div>
+                </div>
+                <div class="control-group">
+                  <label class="control-label" for="acct-form-new-password-confirmation">Confirm Password</label>
+                  <div class="controls">
+                    <input type="password" name="new_password_confirmation" id="acct-form-new-password-confirmation" class="input-xlarge">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+      </div>
+    </script>
+    
+    <script type="text/template" id="account-step-submit-template">
+      <div class="spinner align-center">
+        <img src="images/roller.gif"/>
+        <p>{{message}}</p>
+      </div>
+    </script>
+    
+    <script type="text/template" id="account-step-done-template">
+      <div>
+        <p></p>
+      </div>
+    </script>
+    
+    <script type="text/template" id="account-step-error-template">
+      <div class="error-step">
+        <div class="icon"></div>
+        <div class="info">
+          <p class="title">Oops. There was a problem updating your account.</p>
+          <p class="message"></p>
+        </div>
+      </div>
+    </script>
+    
+    
+    <!-- shop templates -->
+    <script type="text/template" id="shop-template">
+      <div class="wizard">
+        <form id="shop-form">
+          <div class="wizard-body">
+          </div>
+          <div class="wizard-footer">
+            <input type="hidden" name="sid" value="0">
+            <button type="button" class="btn prev">Back</button>
+            <button type="submit" class="btn btn-primary next">Next <i class="icon-chevron-right icon-white"></i></button>
+          </div>
+        </form>
+      </div>
+    </script>
+    
+    <script type="text/template" id="shop-step-load-template">
+      <div class="spinner align-center">
+        <img src="images/roller.gif"/>
+        <p>{{message}}</p>
+      </div>
+    </script>
+    
+    <script type="text/template" id="shop-step-products-template">
+      <div class="products">
+      </div>
+    </script>
+    
+    <script type="text/template" id="shop-step-products-product-template">
+      <div class="product controls">
+        <label class="radio">
+          <input type="radio" name="product[id]" value="{{id}}" data-price="{{price}}">
+          <img src="{{photo}}">
+          <div class="info">
+            <h5 class="title">{{name}} (${{price}})</h5>
+            <p class="description">{{description}}</p>
+          </div>
+        </label>
+      </div>
+    </script>
+    
+    <script type="text/template" id="shop-step-billing-address-template">
+      <div>
+        <div class="controls controls-row">
+          <label for="ba-form-name-given-name" class="control-label span2">First Name</label>
+          <label for="ba-form-name-middle-name" class="control-label span1">MI</label>
+          <label for="ba-form-name-family-name" class="control-label span3">Last Name</label>
+        </div>
+        <div class="controls controls-row">
+          <input id="ba-form-name-given-name" type="text" name="name[given_name]" class="span2"><input id="ba-form-name-middle-name" type="text" name="name[middle_name]" class="span1"><input id="ba-form-name-family-name" type="text" name="name[family_name]" class="span3">
+        </div>
+        <div class="controls">
+          <label for="ba-form-address-street-address" class="control-label span6">Address</label>
+        </div>
+        <div class="controls">
+          <input id="ba-form-address-street-address" type="text" name="address[street_address]" class="span6">
+          <input id="ba-form-address-street-address-ext" type="text" name="address[street_address_ext]" class="span6">
+        </div>
+        <div class="controls controls-row">
+          <label for="ba-form-address-locality" class="control-label span3">City</label>
+          <label for="ba-form-address-region" class="control-label span1">State</label>
+          <label for="ba-form-address-postal-code" class="control-label span2">Zip Code</label>
+        </div>
+        <div class="controls controls-row">
+          <input id="ba-form-address-locality" type="text" name="address[locality]" class="span3"><input id="ba-form-address-region" type="text" name="address[region]" class="span1"><input id="ba-form-address-postal-code" type="text" name="address[postal_code]" class="span2">
+        </div>
+        <div class="controls controls-row">
+          <label for="ba-address-country" class="control-label span4">Country</label>
+          <label for="ba-form-phone-number" class="control-label span2">Phone</label>
+        </div>
+        <div class="controls controls-row">
+          <select id="ba-address-country" name="address[country]" class="span4">
+            <option value="US">United States</option>
+            <option value="CA">Canada</option>
+          </select><input type="text" name="phone_number" id="ba-form-phone-number" class="span2">
+        </div>
+      </div>
+    </script>
+    
+    <script type="text/template" id="shop-step-credit-card-template">
+      <div>
+        <div class="controls">
+          <label for="cc-form-name" class="control-label span6">Cardholder&apos;s Name</label>
+        </div>
+        <div class="controls">
+          <input id="cc-form-name" type="text" name="credit_card[name]" class="span6">
+        </div>
+        <div class="controls controls-row">
+          <label for="cc-form-number" class="control-label span5">Credit Card Number</label>
+          <label for="cc-form-csc" class="control-label span1">CSC</label>
+        </div>
+        <div class="controls controls-row">
+          <input id="cc-form-number" type="text" name="credit_card[number]" class="span5"><input id="cc-form-csc" type="text" name="credit_card[csc]" class="span1">
+        </div>
+        <div class="controls">
+          <label for="cc-form-expiration-month" class="control-label span6">Expiration Date</label>
+        </div>
+        <div class="controls controls-row">
+          <select id="cc-form-expiration-month" name="credit_card[expiration_date[month]]" class="span1">
+            <option value="01">01</option>
+            <option value="02">02</option>
+            <option value="03">03</option>
+            <option value="04">04</option>
+            <option value="05">05</option>
+            <option value="06">06</option>
+            <option value="07">07</option>
+            <option value="08">08</option>
+            <option value="09">09</option>
+            <option value="10">10</option>
+            <option value="11">11</option>
+            <option value="12">12</option>
+          </select>
+          <select name="credit_card[expiration_date[year]]" id="cc-form-expiration-year" class="span2">
+            <option value="2012">2012</option>
+            <option value="2013">2013</option>
+            <option value="2014">2014</option>
+            <option value="2015">2015</option>
+            <option value="2016">2016</option>
+            <option value="2017">2017</option>
+            <option value="2018">2018</option>
+            <option value="2019">2019</option>
+          </select>
+          <span class="credit-card-types span3">
+            <img src="img/visa.png">
+            <img src="img/mastercard.png">
+          </span>
+        </div>
+      </div>
+    </script>
+    
+    <script type="text/template" id="shop-step-calculate-template">
+      <div class="spinner align-center">
+        <img src="images/roller.gif"/>
+        <p>{{message}}</p>
+      </div>
+    </script>
+    
+    <script type="text/template" id="shop-step-invoice-template">
+      <div class="invoice">
+        <h4>Confirm Your Order</h4>
+        <div class="order">
+          <div class="items">
+          </div>
+          <div class="tax">
+            <h5>Sales Tax (<span class="rate"></span>%):</h5>
+            <span class="amount"></span>
+          </div>
+          <div class="total">
+            <h5>Total:</h5>
+            <span class="amount"></span>
+          </div>
+        </div>
+        <div class="payment-method">
+          <div class="credit-card">
+            <h5>Credit Card</h5>
+            <div>Number: <span class="number"></span></div>
+            <div>Expires: <span class="expiration-month"></span>/<span class="expiration-year"></span></div>
+          </div>
+          <div class="billing-address">
+            <h5>Billing Address</h5>
+            <div><span class="given-name"></span> <span class="family-name"></span></div>
+            <div><span class="street-address"></span><br/><span class="street-address-ext"></span></div>
+            <div><span class="locality"></span>, <span class="region"></span> <span class="postal-code"></span></div>
+            <div><span class="country"></span></div>
+            <div><span class="phone-number"></span></div>
+          </div>
+        </div>
+      </div>
+    </script>
+    
+    <script type="text/template" id="shop-step-invoice-item-template">
+      <div class="item">
+        <h5 class="title">{{name}}</h5>
+        <span class="price">${{price}}</span>
+        <div class="quantity">quantity: {{quantity}}</div>
+      </div>
+    </script>
+    
+    <script type="text/template" id="shop-step-submit-template">
+      <div class="spinner align-center">
+        <img src="images/roller.gif"/>
+        <p>{{message}}</p>
+      </div>
+    </script>
+    
+    <script type="text/template" id="shop-step-done-template">
+      <div class="purchased align-center">
+        <p></p>
+      </div>
+    </script>
+    
+    <script type="text/template" id="shop-step-error-template">
+      <div class="error-step">
+        <div class="icon"></div>
+        <div class="info">
+          <p class="title">Oops. There was a problem processing your order.</p>
+          <p class="message"></p>
+        </div>
+      </div>
+    </script>
+    
+    
+    <!-- redeem code templates -->
+    <script type="text/template" id="redeem-code-template">
+      <div class="wizard">
+        <form id="redeem-code-form" class="form-horizontal">
+          <div class="wizard-body">
+          </div>
+          <div class="wizard-footer">
+            <button type="submit" class="btn btn-primary next">Submit</button>
+          </div>
+        </form>
+      </div>
+    </script>
+    
+    <script type="text/template" id="redeem-code-step-input-template">
+      <div class="redeem-code control-group">
+        <label class="control-label" for="redemption-code">Code</label>
+        <div class="controls">
+          <input type="text" name="code" id="redemption-code" class="x-input-xlarge">
+        </div>
+      </div>
+    </script>
+    
+    <script type="text/template" id="redeem-code-step-submit-template">
+      <div class="spinner align-center">
+        <img src="images/roller.gif"/>
+        <p>{{message}}</p>
+      </div>
+    </script>
+    
+    <script type="text/template" id="redeem-code-step-done-template">
+      <div>
+      </div>
+    </script>
+    
+    <script type="text/template" id="redeem-code-step-error-template">
+      <div class="error-step">
+        <div class="icon"></div>
+        <div class="info">
+          <p class="title">Failed to redeem code.</p>
+          <p class="message"></p>
+        </div>
+      </div>
+    </script>
+    
+    <script type="text/template" id="redeemed-for-template">
+      <div class="redeemed align-center">
+        <div class="icon"><img src="{{iconURL}}"></div>
+        <p class="message">{{message}}</p>
+      </div>
+    </script>
+    
+    
+    <!-- Generic Templates -->
+    <script type="text/template" id="overlay-template">
+      <div class="modal-backdrop hide" />
+    </script>
+    
+    <script type="text/template" id="popover-overlay-template">
+      <div class="popover-backdrop hide" />
+    </script>
+    
+    <script type="text/template" id="dialog-template">
+      <!-- TODO: remove `fade` and `in` classes -->
+      <div id="{{id}}" class="modal hide x-fade x-in">
+        <div class="modal-header">
+          <a class="close" data-dismiss="modal">&times;</a>
+          <h4>{{title}}</h4>
+        </div>
+        <div class="modal-body">
+        </div>
+      </div>
+    </script>
+    
+    <script type="text/template" id="wizard-dialog-template">
+      <!-- TODO: remove `fade` and `in` classes -->
+      <div id="{{id}}" class="modal hide x-fade x-in">
+        <div class="modal-header">
+          <a class="close" data-dismiss="modal">&times;</a>
+          <h4>{{title}}</h4>
+        </div>
+        <div class="body">
+        </div>
+      </div>
+    </script>
+    
+    <script type="text/template" id="popover-template">
+      <div id="{{id}}" class="popover">
+        <div class="arrow"></div>
+        <div class="popover-inner">
+          <h3 class="popover-title">{{title}}</h3>
+          <div class="popover-content">
+          </div>
+        </div>
+      </div>
+    </script>
+    
+    <script type="text/template" id="coach-popover-template">
+      <div class="popover">
+        <div class="arrow"></div>
+        <div class="popover-inner">
+          <div class="popover-content">
+            <button class="close">&times;</button>
+            {{text}}
+          </div>
+        </div>
+      </div>
+    </script>
+    
+    <script type="text/template" id="confirm-popover-template">
+      <div class="popover">
+        <div class="arrow"></div>
+        <div class="popover-inner">
+          <div class="popover-content">
+            <button class="close">&times;</button>
+            {{text}}
+            <div class="actions">
+              <button class="btn btn-medium cancel">No</button>
+              <button class="btn btn-medium btn-primary ok">Yes</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </script>
+    
+    <script type="text/template" id="wizard-popover-template">
+      <div id="{{id}}" class="popover">
+        <div class="arrow"></div>
+        <div class="popover-inner">
+          <h3 class="popover-title">{{title}}</h3>
+          <div class="body">
+          </div>
+        </div>
+      </div>
+    </script>
+    
+    <script type="text/template" id="error-dialog-template">
+      <div class="modal error hide fade in">
+        <div class="modal-header">
+          <button class="close" data-dismiss="modal">&times;</button>
+          <h4>Error</h4>
+        </div>
+        <div class="modal-body">
+          <div class="icon error"></div>
+          <div class="info">
+            <p class="description"></p>
+            <p class="suggestion"></p>
+            <p><span class="message"></span> (code: <span class="code"></span>)</p>
+          </div>
+        </div>
+      </div>
+    </script>
+    
+    <script type="text/template" id="space-error-dialog-template">
+      <div class="modal error hide fade in">
+        <div class="modal-header">
+          <button class="close" data-dismiss="modal">&times;</button>
+          <h4>Unable to Install Game</h4>
+        </div>
+        <div class="modal-body">
+          <div class="icon device"><img src="img/base-connected.png" width="48" height="48"></div>
+          <div class="info">
+            <p class="description"></p>
+            <p class="suggestion"></p>
+          </div>
+        </div>
+      </div>
+    </script>
+    
+  </body>
+</html>

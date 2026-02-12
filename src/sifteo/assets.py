@@ -104,6 +104,40 @@ class UploadError(Exception):
     pass
 
 
+class AssetSyncError(Exception):
+    """Raised when asset sync to a cube fails."""
+    pass
+
+
+@dataclass
+class AssetDeclaration:
+    """A single declared asset in a game's manifest."""
+    name: str
+    path: str           # Resolved absolute path
+    asset_type: int     # ASSET_TYPE_IMAGE or ASSET_TYPE_SOUND
+    asset_id: int       # Assigned integer ID
+
+    @property
+    def type_name(self) -> str:
+        return "image" if self.asset_type == ASSET_TYPE_IMAGE else "sound"
+
+
+@dataclass
+class AssetManifest:
+    """Computed asset manifest for a game, built from BaseApp class attributes."""
+    app_id: int
+    app_name: Optional[str]
+    assets: dict  # name -> AssetDeclaration
+
+    @property
+    def image_count(self) -> int:
+        return sum(1 for a in self.assets.values() if a.asset_type == ASSET_TYPE_IMAGE)
+
+    @property
+    def sound_count(self) -> int:
+        return sum(1 for a in self.assets.values() if a.asset_type == ASSET_TYPE_SOUND)
+
+
 # -- Image Encoding --
 
 CRC_SIZE = 4
@@ -184,6 +218,152 @@ def encode_image_rgb(pixel_data: bytes, width: int, height: int) -> bytes:
     return bytes(pixels) + struct.pack("<I", crc)
 
 
+# -- Sound Encoding --
+
+# Cube audio format: IEEE 32-bit float, 22050 Hz, mono
+SOUND_SAMPLE_RATE = 22050
+SOUND_SAMPLE_WIDTH = 4  # 32-bit float = 4 bytes
+
+# WAV format codes
+_WAV_PCM = 1
+_WAV_IEEE_FLOAT = 3
+
+
+def encode_sound(sound_path: Union[str, Path],
+                 target_rate: int = SOUND_SAMPLE_RATE) -> bytes:
+    """Encode a WAV audio file to the cube's native format (float32 samples + CRC).
+
+    Reads a WAV file, converts to mono 22050 Hz IEEE 32-bit float samples,
+    and appends a CRC32.
+
+    Supports PCM WAV (8/16/24/32-bit) and IEEE float WAV (32/64-bit).
+    Input files at other sample rates are resampled via linear interpolation.
+
+    Args:
+        sound_path: Path to a WAV file.
+        target_rate: Target sample rate (default 22050 Hz).
+
+    Returns:
+        Bytes ready for upload (raw float32 samples + 4-byte CRC).
+    """
+    sound_path = Path(sound_path)
+    ext = sound_path.suffix.lower()
+
+    if ext == ".wav":
+        samples = _decode_wav(sound_path, target_rate)
+    else:
+        raise ValueError(f"Unsupported audio format: {ext} (only .wav is supported)")
+
+    raw = struct.pack(f"<{len(samples)}f", *samples)
+    crc = zlib.crc32(raw) & 0xFFFFFFFF
+    return raw + struct.pack("<I", crc)
+
+
+def _decode_wav(wav_path: Path, target_rate: int) -> list[float]:
+    """Decode a WAV file to a list of mono float32 samples at target_rate."""
+    with open(wav_path, "rb") as f:
+        data = f.read()
+
+    if data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+        raise ValueError("Not a valid WAV file")
+
+    # Parse chunks
+    fmt_data = None
+    audio_data = None
+    pos = 12
+    while pos < len(data) - 8:
+        chunk_id = data[pos:pos + 4]
+        chunk_size = struct.unpack_from("<I", data, pos + 4)[0]
+        chunk_body = data[pos + 8:pos + 8 + chunk_size]
+        if chunk_id == b"fmt ":
+            fmt_data = chunk_body
+        elif chunk_id == b"data":
+            audio_data = chunk_body
+        pos += 8 + chunk_size
+        if pos % 2 == 1:
+            pos += 1  # WAV chunks are word-aligned
+
+    if fmt_data is None or audio_data is None:
+        raise ValueError("WAV file missing fmt or data chunk")
+
+    audio_fmt = struct.unpack_from("<H", fmt_data, 0)[0]
+    channels = struct.unpack_from("<H", fmt_data, 2)[0]
+    sample_rate = struct.unpack_from("<I", fmt_data, 4)[0]
+    bits_per_sample = struct.unpack_from("<H", fmt_data, 14)[0]
+
+    # Decode samples to float32
+    if audio_fmt == _WAV_IEEE_FLOAT:
+        if bits_per_sample == 32:
+            n_samples = len(audio_data) // 4
+            samples = list(struct.unpack(f"<{n_samples}f", audio_data[:n_samples * 4]))
+        elif bits_per_sample == 64:
+            n_samples = len(audio_data) // 8
+            doubles = struct.unpack(f"<{n_samples}d", audio_data[:n_samples * 8])
+            samples = [float(d) for d in doubles]
+        else:
+            raise ValueError(f"Unsupported IEEE float bit depth: {bits_per_sample}")
+    elif audio_fmt == _WAV_PCM:
+        samples = _pcm_to_float(audio_data, bits_per_sample)
+    else:
+        raise ValueError(f"Unsupported WAV format code: {audio_fmt}")
+
+    # Mix to mono if stereo/multi-channel
+    if channels > 1:
+        mono = []
+        for i in range(0, len(samples), channels):
+            mono.append(sum(samples[i:i + channels]) / channels)
+        samples = mono
+
+    # Resample if needed
+    if sample_rate != target_rate:
+        samples = _resample(samples, sample_rate, target_rate)
+
+    return samples
+
+
+def _pcm_to_float(data: bytes, bits: int) -> list[float]:
+    """Convert PCM audio data to float32 samples in [-1.0, 1.0]."""
+    if bits == 8:
+        # 8-bit PCM is unsigned (0-255, center at 128)
+        return [(b - 128) / 128.0 for b in data]
+    elif bits == 16:
+        n = len(data) // 2
+        raw = struct.unpack(f"<{n}h", data[:n * 2])
+        return [s / 32768.0 for s in raw]
+    elif bits == 24:
+        samples = []
+        for i in range(0, len(data) - 2, 3):
+            val = data[i] | (data[i + 1] << 8) | (data[i + 2] << 16)
+            if val >= 0x800000:
+                val -= 0x1000000
+            samples.append(val / 8388608.0)
+        return samples
+    elif bits == 32:
+        n = len(data) // 4
+        raw = struct.unpack(f"<{n}i", data[:n * 4])
+        return [s / 2147483648.0 for s in raw]
+    else:
+        raise ValueError(f"Unsupported PCM bit depth: {bits}")
+
+
+def _resample(samples: list[float], src_rate: int, dst_rate: int) -> list[float]:
+    """Resample audio via linear interpolation."""
+    if src_rate == dst_rate:
+        return samples
+    ratio = src_rate / dst_rate
+    out_len = int(len(samples) * dst_rate / src_rate)
+    result = []
+    for i in range(out_len):
+        src_pos = i * ratio
+        idx = int(src_pos)
+        frac = src_pos - idx
+        if idx + 1 < len(samples):
+            result.append(samples[idx] * (1.0 - frac) + samples[idx + 1] * frac)
+        else:
+            result.append(samples[min(idx, len(samples) - 1)])
+    return result
+
+
 def read_siftimg(file_path: Union[str, Path]) -> bytes:
     """Read a pre-compiled .siftimg file as raw bytes."""
     with open(file_path, "rb") as f:
@@ -247,6 +427,33 @@ class AssetManager:
                 continue
             if len(raw) >= 3 and raw[2] == opcode:
                 return raw
+        return None
+
+    def _wait_for_either(self, cube_id: int, opcode: int,
+                         timeout: float = 10.0) -> Optional[tuple[bytes, bool]]:
+        """Wait for a message on either the response or event queue.
+
+        Some messages (like ASSET_UPLOAD_RESULT) may arrive on either queue
+        depending on firmware version. This checks both.
+
+        Returns:
+            (raw_bytes, from_response_queue) or None if timed out.
+        """
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                break
+            # Check response queue (non-blocking)
+            raw = self._dongle.get_response_raw(timeout=None)
+            if raw is not None and len(raw) >= 3 and raw[2] == opcode:
+                return (raw, True)
+            # Check event queue (short blocking wait)
+            msg = self._dongle.get_event(timeout=min(remaining, 0.25))
+            if msg is not None and msg.opcode == opcode:
+                # Reconstruct raw bytes: [0, address, opcode, payload...]
+                raw = bytes([0, msg.address, msg.opcode]) + bytes(msg.payload)
+                return (raw, False)
         return None
 
     # -- Asset Upload --
@@ -321,27 +528,17 @@ class AssetManager:
             if progress:
                 progress(offset, size)
 
-        # Step 4: Wait for upload result
-        raw = self._wait_for_response(Op.ASSET_UPLOAD_RESULT, timeout=15.0)
-        if raw is None:
-            raise UploadError("No upload result received from dongle (timed out)")
+        # Step 4: Wait for upload result (may arrive on either queue)
+        result = self._wait_for_either(cube_id, Op.ASSET_UPLOAD_RESULT, timeout=15.0)
+        if result is None:
+            raise UploadError("No upload result received (timed out)")
 
-        # Parse status from response payload.
-        # Response format: [radio_msg_len, addr(0xFF), opcode(73), ...payload]
-        # The status byte is at payload offset 4 from the legacy code
-        # (ASSET_UPLOAD_RESULT_IDX = 6, with MSG_HEADER_LENGTH=2 → offset 4 in payload).
-        # In our wire format: data[3+4] = data[7], but the legacy offsets count
-        # from byte index 0 of the raw packet with header_len=2.
-        # Legacy: getUInt8AtOffet(rply, 6, header=2) → rply[8]
-        # Our raw: [radio_msg_len, 0xFF, opcode, payload...] → payload starts at [3]
-        # Status is at payload[3] (the 4th byte of payload after opcode-specific data).
-        # From the original: ASSET_UPLOAD_RESULT_IDX=6 + header=2 = index 8 in raw.
-        # In our wire format that's raw[8] too (since our raw starts at byte 0).
-        # But actually let's be careful: in the original dongle_helper, the raw message
-        # is [siftid, opcode, ...payload] (32 bytes total). Index 6+2=8.
-        # In our format: [radio_msg_len, address, opcode, payload...] (33 bytes).
-        # The payload starts at index 3. The result status should be at a fixed offset.
-        # Let's just check multiple likely positions.
+        raw, from_response = result
+        # Parse status byte. The status is at a fixed offset in the payload.
+        # Legacy code: getUInt8AtOffet(rply, 6, header=2) → rply[8]
+        # Response queue raw: [radio_msg_len, 0xFF, opcode, payload...] → raw[8]
+        # Event queue raw (reconstructed): [0, cube_addr, opcode, payload...] → raw[8]
+        # Both formats have payload starting at index 3, status at payload[5] = raw[8].
         if len(raw) > 8:
             status = raw[8]
         elif len(raw) > 6:
@@ -460,16 +657,16 @@ class AssetManager:
         Uses a longer timeout because deletion of many assets can be slow.
         """
         self._dongle.send(cmd_delete_all_assets(cube_id, app_id))
-        raw = self._wait_for_response(Op.ASSET_DELETE_COMPLETE, timeout=timeout)
-        return raw is not None
+        result = self._wait_for_either(cube_id, Op.ASSET_DELETE_COMPLETE, timeout=timeout)
+        return result is not None
 
     def delete_asset(self, cube_id: int, app_id: int, asset_id: int,
                      asset_type: int = ASSET_TYPE_IMAGE,
                      timeout: float = 10.0) -> bool:
         """Delete a specific asset from a cube."""
         self._dongle.send(cmd_delete_asset(cube_id, app_id, asset_id, asset_type))
-        raw = self._wait_for_response(Op.ASSET_DELETE_COMPLETE, timeout=timeout)
-        return raw is not None
+        result = self._wait_for_either(cube_id, Op.ASSET_DELETE_COMPLETE, timeout=timeout)
+        return result is not None
 
     # -- CRC Verification --
 
@@ -617,6 +814,27 @@ class AssetManager:
         return self.upload_bytes(cube_id, app_id, asset_id, data,
                                  asset_type=ASSET_TYPE_IMAGE, progress=progress)
 
+    def upload_sound(self, cube_id: int, app_id: int, asset_id: int,
+                     sound_path: Union[str, Path],
+                     progress: Optional[Callable[[int, int], None]] = None) -> bool:
+        """Encode a WAV file and upload as a sound asset to a cube.
+
+        Converts the audio to 22050 Hz mono float32 and streams to cube flash.
+
+        Args:
+            cube_id: Target cube address.
+            app_id: 32-bit application ID.
+            asset_id: 16-bit asset ID within the app.
+            sound_path: Path to WAV file.
+            progress: Optional callback(bytes_sent, total_bytes).
+
+        Returns:
+            True if upload succeeded.
+        """
+        data = encode_sound(sound_path)
+        return self.upload_bytes(cube_id, app_id, asset_id, data,
+                                 asset_type=ASSET_TYPE_SOUND, progress=progress)
+
     def upload_and_verify(self, cube_id: int, app_id: int, asset_id: int,
                           data: bytes, asset_type: int = ASSET_TYPE_IMAGE,
                           progress: Optional[Callable[[int, int], None]] = None) -> bool:
@@ -647,3 +865,71 @@ class AssetManager:
         print(f"\r  [{bar}] {pct}% ({bytes_sent}/{total} bytes)", end="", flush=True)
         if bytes_sent >= total:
             print()
+
+
+# -- App Asset Sync --
+
+def sync_app_assets(manager: AssetManager, cube_id: int,
+                    manifest: AssetManifest) -> None:
+    """Smart-sync declared assets to a cube, uploading only what's missing.
+
+    Queries the cube's asset inventory for the app and skips assets
+    that are already present. If the app doesn't exist on the cube
+    or the counts don't match expectations, uploads all assets.
+
+    Args:
+        manager: AssetManager instance for dongle communication.
+        cube_id: Target cube address.
+        manifest: The game's asset manifest.
+
+    Raises:
+        FileNotFoundError: If a declared asset file doesn't exist.
+        AssetSyncError: If an upload fails.
+    """
+    app_id = manifest.app_id
+
+    # Check what's already on the cube
+    existing_ids: set[int] = set()
+    info = manager.query_app_info(cube_id, app_id, timeout=5.0)
+    if (info
+            and info.image_count == manifest.image_count
+            and info.sound_count == manifest.sound_count):
+        inventory = manager.query_asset_inventory(cube_id, app_id, timeout=5.0)
+        existing_ids = {a.asset_id for a in inventory}
+
+    to_upload = [a for a in manifest.assets.values()
+                 if a.asset_id not in existing_ids]
+
+    if not to_upload:
+        print(f"  Cube {cube_id}: all {len(manifest.assets)} asset(s) present")
+        return
+
+    print(f"  Cube {cube_id}: uploading {len(to_upload)}/{len(manifest.assets)} asset(s)")
+
+    for asset in sorted(to_upload, key=lambda a: a.asset_id):
+        if not os.path.exists(asset.path):
+            raise FileNotFoundError(
+                f"Asset file not found: {asset.path} "
+                f"(declared as {asset.name!r})"
+            )
+
+        print(f"    {asset.name} ({os.path.basename(asset.path)})...")
+        try:
+            if asset.asset_type == ASSET_TYPE_IMAGE:
+                ext = os.path.splitext(asset.path)[1].lower()
+                if ext == ".siftimg":
+                    data = read_siftimg(asset.path)
+                else:
+                    data = encode_image(asset.path)
+                manager.upload_bytes(cube_id, app_id, asset.asset_id, data,
+                                     asset_type=ASSET_TYPE_IMAGE,
+                                     progress=AssetManager.print_progress)
+            else:
+                data = encode_sound(asset.path)
+                manager.upload_bytes(cube_id, app_id, asset.asset_id, data,
+                                     asset_type=ASSET_TYPE_SOUND,
+                                     progress=AssetManager.print_progress)
+        except UploadError as e:
+            raise AssetSyncError(
+                f"Failed to upload {asset.name!r} to cube {cube_id}: {e}"
+            ) from e

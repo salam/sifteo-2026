@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist SYSTEM "file://localhost/System/Library/DTDs/PropertyList.dtd">
+<plist version="0.9">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.sifteo.Sync</string>
+	<key>CFBundleVersion</key>
+	<string>0.9.10.1</string>
+	<key>CFBundleExecutable</key>
+	<string>SifteoSync</string>
+	<key>CFBundleName</key>
+	<string>Sifteo Sync</string>
+	<key>CFBundleIconFile</key>
+	<string>SifteoSync.icns</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.9.10</string>
+	<key>CFBundleGetInfoString</key>
+	<string>Copyright © 2012 Sifteo Inc.</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+</dict>
+</plist>

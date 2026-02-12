@@ -1,0 +1,24 @@
+/* Popover */
+
+
+/* Wizard */
+
+
+/* Spinner */
+
+.spinner img  {
+  margin: 10px;
+}
+
+.spinner img[src="images/roller.gif"] {
+  width: 36px;
+  height: 36px;
+}
+
+
+/* Utility */
+
+.align-center {
+  margin: 0 auto;
+  text-align: center;
+}

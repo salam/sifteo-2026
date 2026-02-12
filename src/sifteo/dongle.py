@@ -93,6 +93,12 @@ class SifteoDongle:
     - address != 0xFF: cube events (asynchronous sensor/state data)
     """
 
+    # Minimum gap between consecutive USB writes (seconds).
+    # The nRF24LU1+ has a small buffer and needs time to relay each
+    # command over radio to the cubes.
+    WRITE_MIN_GAP = 0.025     # 25 ms
+    WRITE_MAX_RETRIES = 2     # retry on timeout before giving up
+
     def __init__(self):
         self._dev = None       # usb.core.Device
         self._ep_in = None     # IN endpoint
@@ -102,6 +108,7 @@ class SifteoDongle:
         self._response_queue: queue.Queue = queue.Queue(5000)
         self._event_queue: queue.Queue = queue.Queue(5000)
         self._msg_id = 0
+        self._last_write_time = 0.0
 
     def _next_msg_id(self) -> int:
         """Get next message ID (0-255 incrementing counter)."""
@@ -220,23 +227,42 @@ class SifteoDongle:
 
         Copies the 33-byte message into a 34-byte buffer (zero-padded).
         No HID report ID prefix — pyusb interrupt writes don't need one.
+
+        Rate-limits writes so the dongle's nRF24LU1+ chip can keep up,
+        and retries on transient USB timeouts.
         """
         import usb.core
+
+        # Rate-limit: wait if we sent a write too recently
+        now = time.time()
+        gap = now - self._last_write_time
+        if gap < self.WRITE_MIN_GAP:
+            time.sleep(self.WRITE_MIN_GAP - gap)
 
         padded = bytearray(EP_OUT_SIZE)
         n = min(len(data), EP_OUT_SIZE)
         padded[:n] = data[:n]
 
-        try:
-            written = self._ep_out.write(bytes(padded), timeout=1000)
-            if written != EP_OUT_SIZE:
-                raise DongleWriteError(
-                    f"Short write: {written}/{EP_OUT_SIZE} bytes"
-                )
-        except usb.core.USBTimeoutError:
-            raise DongleWriteError("Write timed out")
-        except usb.core.USBError as e:
-            raise DongleWriteError(f"Write failed: {e}") from e
+        last_err = None
+        for attempt in range(1 + self.WRITE_MAX_RETRIES):
+            try:
+                written = self._ep_out.write(bytes(padded), timeout=1000)
+                self._last_write_time = time.time()
+                if written != EP_OUT_SIZE:
+                    raise DongleWriteError(
+                        f"Short write: {written}/{EP_OUT_SIZE} bytes"
+                    )
+                return
+            except usb.core.USBTimeoutError as e:
+                last_err = e
+                # Back off before retrying
+                time.sleep(self.WRITE_MIN_GAP * (attempt + 1))
+            except usb.core.USBError as e:
+                raise DongleWriteError(f"Write failed: {e}") from e
+
+        raise DongleWriteError(
+            f"Write timed out after {1 + self.WRITE_MAX_RETRIES} attempts"
+        )
 
     # -- Receiving --
 

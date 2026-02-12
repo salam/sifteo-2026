@@ -1,0 +1,178 @@
+/* Navbar */
+
+.mb-icon {
+  float: left;
+}
+
+#mb-login {
+  margin: 9px 12px 0 0;
+}
+
+#mb-account {
+  margin: 12px 18px 0 0;
+  font-weight: bold;
+}
+
+#mb-account a {
+  color: #009ecc;
+}
+
+#mb-shop {
+  margin: 12px 0;
+  font-weight: bold;
+}
+
+#mb-shop .credits .amount {
+  color: #009ecc;
+}
+
+#mb-shop a {
+  display: block;
+  float: left;
+}
+
+#mb-shop a[href="#shop"] {
+  width: 65px;
+  height: 8px;
+  margin: 0 4px 0 0;
+  padding: 2px 0;
+  background: url('../img/en/shop-purchase-orange.png') no-repeat;
+  background-position: center;
+}
+
+#mb-shop a[href="#redeem-code"] {
+  width: 57px;
+  height: 12px;
+  background: url('../img/en/shop-redeem-orange.png') no-repeat;
+  background-position: center;
+}
+
+#mb-devices a {
+  display: block;
+}
+
+.sift-device-base {
+  x-display: none;
+  width: 96px;
+  height: 67px;
+  margin: -4px 0 0 0;
+  background-position: left center;
+  background-repeat: no-repeat;
+  x-border: 2px solid red;
+}
+
+.sift-device-base.connected {
+  background-image: url('../img/base-connected.png');
+}
+
+.sift-device-base.disconnected {
+  background-image: url('../img/base-disconnected.png');
+}
+
+/* Popover */
+
+.popover {
+  z-index: 2060;
+}
+
+/* Library */
+
+.app-carousel {
+  margin: 0;
+}
+
+.carousel .left-hover {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40px;
+  height: 100%;
+  background-color: green;
+}
+
+.carousel .left-hover:hover {
+  background-color: red;
+}
+
+.carousel .right-hover {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 40px;
+  height: 100%;
+  background-color: green;
+}
+
+.carousel .right-hover:hover {
+  background-color: red;
+}
+
+/*
+.app-carousel .carousel-control { 
+  background: none;
+  border: none;
+  x-top: 35%;
+}
+
+.app-carousel .carousel-control.left {
+  width: 144px;
+  height: 144px;
+  background-image: url(../images/left_arrow.png);
+  background-repeat: no-repeat;
+}
+
+.app-carousel .carousel-control.right {
+  width: 144px;
+  height: 144px;
+  background-image: url(../images/right_arrow.png);
+  background-repeat: no-repeat;
+}
+*/
+
+/* Account View */
+
+#account-popover {
+  width: 560px;
+}
+
+#account-popover .wizard-body {
+  height: 280px;
+}
+
+/* Device View */
+
+#device-popover {
+  width: 560px;
+}
+
+#device-popover .wizard-body {
+  x-height: 280px;
+}
+
+.device-apps img {
+  width: 48px;
+  height: 48px;
+}
+
+.device-apps.dl-horizontal dt {
+  width: 48px;
+  height: 48px;
+}
+
+.device-apps.dl-horizontal dd {
+  height: 48px;
+  margin-left: 64px;
+  margin-bottom: 12px;
+}
+
+.device-apps.dl-horizontal dd .info {
+  float: left;
+}
+
+.device-apps.dl-horizontal dd .action {
+  float: right;
+}
+
+.device-apps.dl-horizontal dd.disabled {
+  color: #999999;
+}

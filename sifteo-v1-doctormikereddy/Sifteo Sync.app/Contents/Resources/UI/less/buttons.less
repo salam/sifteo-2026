@@ -1,0 +1,297 @@
+.sift-btn {
+  position: relative;
+  height: 45px;
+  
+  &:hover {
+    text-decoration: none;
+  }
+  
+  &:before {
+    float: left;
+    width: 22px;
+    height: 45px;
+    content: "" url('../img/button-cap-left.png');
+  }
+  &:after {
+    float: right;
+    width: 32px;
+    height: 45px;
+    content: "" url('../img/button-cap-right.png');
+  }
+  
+  .inner {
+    float: left;
+    height: 45px;
+    padding: 15px 6px 0 0;
+    background: url('../img/button-bg.png') repeat-x;
+    font-family: "Gotham", sans-serif;
+    font-weight: bold;
+    color: white;
+  }
+  
+  .credits {
+    margin: 6px;
+
+    &:before {
+      float: left;
+      width: 21px;
+      height: 16px;
+      content: "" url('../img/en/buy-for.png');
+    }
+    &:after {
+      float: right;
+      width: 48px;
+      height: 9px;
+      content: "" url('../img/en/credits.png');
+    }
+  }
+  
+  &.disabled {
+    // Requires Qt5
+    x-webkit-filter: grayscale(100%);
+    
+    &:hover {
+      cursor: default;
+    }
+    
+    &:before {
+      content: "" url('../img/button-cap-left-disabled.png');
+    }
+    &:after {
+      content: "" url('../img/button-cap-right-disabled.png');
+    }
+    
+    .inner {
+      color: #ddd;
+      background: url('../img/button-bg-disabled.png') repeat-x;
+    }
+  }
+}
+
+//* {
+//   border: 1px solid red !important;
+//}
+
+.action-btn {
+  display: block;
+  height: 41px;
+  
+  &:before {
+    width: 30px;
+    height: 41px;
+  }
+  &:after {
+    width: 30px;
+    height: 41px;
+  }
+  
+  &:hover {
+    x-border: 2px solid red;
+    text-decoration: none;
+  }
+  
+  .inner {
+    display: inline-block;
+    height: 41px;
+    min-width: 115px;
+    padding: 0 8px;
+    color: white;
+    text-align: center;
+    vertical-align: top;
+  }
+  
+  img {
+    position: relative;
+    top: 8px;
+  }
+  
+  .text {
+    position: relative;
+    top: 9px;
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: 80%;
+    text-transform: uppercase;
+  }
+  
+  .price {
+    position: relative;
+    top: 10px;
+    display: inline-block;
+    font-family: sans-serif;
+    font-weight: bold;
+
+    &:before {
+      float: left;
+      width: 21px;
+      height: 16px;
+      margin-right: 4px;
+      content: url('../img/en/buy-for.png');
+    }
+    &:after {
+      float: right;
+      width: 48px;
+      height: 9px;
+      margin-left: 4px;
+      content: url('../img/en/credits.png');
+    }
+  }
+  
+  &.blue {
+    &:before {
+      content: url('../img/button-blue-cap-left.png');
+    }
+    &:after {
+      content: url('../img/button-blue-cap-right-plus.png');
+    }
+    .inner {
+      background: url('../img/button-blue-bg.png') repeat-x;
+    }
+  }
+  
+  &.green {
+    &:before {
+      content: url('../img/button-green-cap-left.png');
+    }
+    &:after {
+      content: url('../img/button-green-cap-right-plus.png');
+    }
+    .inner {
+      background: url('../img/button-green-bg.png') repeat-x;
+    }
+  }
+  
+  &.orange {
+    &:before {
+      content: url('../img/button-orange-cap-left.png');
+    }
+    &:after {
+      content: url('../img/button-orange-cap-right-plus.png');
+    }
+    .inner {
+      background: url('../img/button-orange-bg.png') repeat-x;
+    }
+  }
+  
+  &.disabled {
+    &:before {
+      width: 26px;
+      content: url('../img/button-gray-cap-left.png');
+    }
+    &:after {
+      width: 26px;
+      content: url('../img/button-gray-cap-right.png');
+    }
+    .inner {
+      background: url('../img/button-gray-bg.png') repeat-x;
+      x-padding: 0 9px;
+      x-background: none;
+      x-background-color: #a6a4a1;
+    }
+  }
+}
+
+
+.action-btn-group {
+  height: 39px;
+  x-border: 1px solid red;
+}
+
+.action-btn-group .action-btn {
+  display: inline;
+  float: left;
+  
+  &:first-child {
+    &:after {
+      content: none;
+    }
+    
+    .inner {
+      min-width: 125px;
+    }
+    
+    &.orange {
+      &:before {
+        content: url('../img/button-orange-cap-left-plus.png');
+      }
+    }
+  }
+  
+  &:last-child {
+    &:before {
+      content: none;
+    }
+    
+    .inner {
+      min-width: 100px;
+    }
+  }
+  
+  &.disabled {
+    &:first-child {
+      &:before {
+        width: 26px;
+        content: url('../img/button-gray-cap-left.png');
+      }
+    }
+  }
+}
+
+.app-actions-normal {
+  &.is-local {
+    .app-action-purchase {
+      display: none;
+    }
+    .app-action-download {
+      display: none;
+    }
+  }
+  
+  &.is-remote {
+    .app-action-install {
+      display: none;
+    }
+    .app-action-purchase {
+      display: none;
+    }
+  }
+  
+  &.is-sellable {
+    .app-action-install {
+      display: none;
+    }
+    .app-action-download {
+      display: none;
+    }
+  }
+}
+
+.app-actions-demoable {
+  display: none;
+  
+  &.is-demo-local {
+    .demo-action-claim {
+      display: none;
+    }
+    .demo-action-download {
+      display: none;
+    }
+  }
+  
+  &.is-demo-remote {
+    .demo-action-claim {
+      display: none;
+    }
+    .demo-action-install {
+      display: none;
+    }
+  }
+  
+  &.is-demo-claimable {
+    .demo-action-install {
+      display: none;
+    }
+    .demo-action-download {
+      display: none;
+    }
+  }
+}

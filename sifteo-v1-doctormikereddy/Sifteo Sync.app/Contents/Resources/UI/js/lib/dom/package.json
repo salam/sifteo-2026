@@ -1,0 +1,31 @@
+{
+  "name": "dom",
+  "version": "0.0.0",
+  "description": "DOM utility module for Anchor.js.",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/anchorjs/dom.git"
+  },
+  "bugs": {
+    "url": "http://github.com/anchorjs/dom/issues"
+  },
+  "author": {
+    "name": "Jared Hanson",
+    "email": "jaredhanson@gmail.com",
+    "url": "http://www.jaredhanson.net/"
+  },
+  "licenses": [
+    {
+      "type": "MIT",
+      "url": "http://www.opensource.org/licenses/MIT"
+    }
+  ],
+  "main": "main",
+  "volo": {
+    "baseUrl": "vendor",
+    "dependencies": {
+      "class": "github:anchorjs/class/master",
+      "selector": "github:anchorjs/selector/master"
+    }
+  }
+}

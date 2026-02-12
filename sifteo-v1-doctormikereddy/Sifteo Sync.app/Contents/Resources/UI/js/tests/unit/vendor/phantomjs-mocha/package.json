@@ -1,0 +1,22 @@
+{
+  "name": "phantomjs-mocha",
+  "version": "0.0.1",
+  "description": "Mocha test framework integration with PhantomJS.",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/jaredhanson/phantomjs-mocha.git"
+  },
+  "bugs": {
+    "url": "http://github.com/jaredhanson/phantomjs-mocha/issues"
+  },
+  "author": { "name": "Jared Hanson", "email": "jaredhanson@gmail.com", "url": "http://www.jaredhanson.net/" },
+  "licenses": [ {
+    "type": "MIT",
+    "url": "http://www.opensource.org/licenses/MIT" 
+  } ],
+  "amd": {},
+  "volo": {
+    "dependencies": {
+    }
+  }
+}

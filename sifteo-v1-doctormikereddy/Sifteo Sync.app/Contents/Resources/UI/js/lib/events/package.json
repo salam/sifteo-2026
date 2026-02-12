@@ -1,0 +1,23 @@
+{
+  "name": "events",
+  "version": "0.0.0",
+  "description": "Events module for Anchor.js.",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/anchorjs/events.git"
+  },
+  "bugs": {
+    "url": "http://github.com/anchorjs/events/issues"
+  },
+  "author": { "name": "Jared Hanson", "email": "jaredhanson@gmail.com", "url": "http://www.jaredhanson.net/" },
+  "licenses": [ {
+    "type": "MIT",
+    "url": "http://www.opensource.org/licenses/MIT" 
+  } ],
+  "main": "main",
+  "amd": {},
+  "volo": {
+    "dependencies": {
+    }
+  }
+}

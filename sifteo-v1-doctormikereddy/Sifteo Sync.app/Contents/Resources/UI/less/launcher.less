@@ -1,0 +1,286 @@
+// Singleton launcher.  These styles position the singleton launcher.
+/*
+#launcher {
+  border: 1px solid red;
+  position: absolute;
+  bottom: 24px;
+  width: 100%;
+  
+  .inner {
+    width: 706px;
+    height: 120px;
+    margin: 0 auto;
+  }
+  
+  .body {
+    border: 1px solid yellow;
+    width: 610px;
+    height: 118px;
+  }
+}
+*/
+
+#launcher-wrapper {
+  x-border: 1px solid purple;
+  position: absolute;
+  width: 100%;
+  height: 120px;
+  bottom: 24px;
+}
+
+.launcher {
+  width: 706px;
+  height: 120px;
+  margin: 0 auto;
+    
+  x-border: 1px solid green;
+}
+
+.launcher .body {
+  position: relative;
+  overflow: hidden;
+  width: 610px;
+  height: 118px;
+  left: 46px;
+  background: rgba(255, 255, 255, .8);
+  border: 2px solid rgba(255, 255, 255, .8);
+  .border-radius(18px);
+}
+
+.launcher .items {
+  width: 20000em;
+  position: absolute;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.launcher .item {
+  float: left;
+}
+
+.launcher .control {
+  position: relative;
+  display: inline-block;
+  width: 46px;
+  height: 60px;
+  clear: none;
+  x-border: 1px solid red;
+  top: -94px;
+  x-margin-top: -84px;
+  
+  &.prev {
+    left: 0px;
+    background-image: url('../img/launcher-prev.png');
+  }
+  
+  &.next {
+    margin-left: 610px;
+    background-image: url('../img/launcher-next.png');
+  }
+}
+
+
+// An application launcher, analogous to the Dock on Mac OS X.
+//
+// Within a .launcher there should be many .items, which represent the
+// applications that can be launched.
+/*
+.launcher {
+  overflow: hidden;
+
+  .inner {
+    x-overflow-x: auto;
+    x-overflow-y: hidden;
+    x-white-space: nowrap;
+  }
+  
+  .body {
+    float: left;
+    background: rgba(255, 255, 255, .8);
+    border: 2px solid rgba(255, 255, 255, .8);
+    .border-radius(18px);
+    overflow: hidden;
+  }
+  
+  .items {
+    border: 1px solid purple;
+    width: 20000em;
+    height: 118px;
+    position: absolute;
+    x-list-style: none;
+    x-margin: 0;
+    x-padding: 0;
+    overflow: hidden;
+  }
+}
+*/
+
+// A control used to navigate a launcher.
+//
+// .prev - Navigate to previous page of items in a launcher.
+// .next - Navigate to next page of items in a launcher.
+//
+// No styleguide reference.
+/*
+.launcher .control {
+  display: block;
+  float: left;
+  width: 46px;
+  height: 60px;
+  margin: 24px 0 0 0;
+  
+  &.prev {
+    background-image: url('../img/launcher-prev.png');
+  }
+  
+  &.next {
+    background-image: url('../img/launcher-next.png');
+  }
+}
+*/
+
+// A page of items to be displayed in a launcher.
+//
+// .active - Current page being displayed.
+//
+// No styleguide reference.
+/*
+.launcher .page {
+  display: none;
+  
+  &.active {
+    display: block;
+  }
+}
+*/
+
+// An item to be displayed in a launcher.
+//
+// .active             - Light blue border around active item.
+// .ribbon.bonus       - Overlay a "Bonus" ribbon.
+// .ribbon.coming-soon - Overlay a "Coming Soon!" ribbon.
+// .ribbon.credits-10  - Overlay a "10 credits" ribbon.
+// .ribbon.credits-20  - Overlay a "20 credits" ribbon.
+// .ribbon.credits-30  - Overlay a "30 credits" ribbon.
+// .ribbon.credits-40  - Overlay a "40 credits" ribbon.
+// .ribbon.credits-50  - Overlay a "50 credits" ribbon.
+// .ribbon.credits-60  - Overlay a "60 credits" ribbon.
+// .ribbon.credits-70  - Overlay a "70 credits" ribbon.
+// .ribbon.credits-80  - Overlay a "80 credits" ribbon.
+// .ribbon.credits-90  - Overlay a "90 credits" ribbon.
+// .ribbon.credits-100 - Overlay a "100 credits" ribbon.
+// .ribbon.new         - Overlay a "New!" ribbon.
+//
+// No styleguide reference.
+.launcher .item {
+  @iconWidth: 96px;
+  @iconHeight: 96px;
+  
+  float: left;
+  margin: 4px 6px;
+  padding: 5px;
+  border: 2px solid transparent;
+  x-border: 2px solid green;
+  overflow: hidden;
+  
+  a {
+    display: block;
+    position: relative;
+    width: 96px;
+    height: 96px;
+  }
+  
+  &.active {
+    background: #00bfe8;
+    border: 2px solid #00bfe8;
+    .border-radius(14px);
+  }
+  
+  img {
+    x-display: block;
+    x-border: 1px solid blue;
+    x-width: @iconWidth;
+    x-height: @iconHeight;
+  }
+  
+  .ribbon {
+    @ribbonWidth: 75px;
+    @ribbonHeight: 77px;
+    @ribbonBendTop: 5px;
+    @ribbonBendRight: 5px;
+    
+    position: absolute;
+    top: -@ribbonBendTop;
+    right: -@ribbonBendRight;
+    x-position: relative;
+    x-top:  @ribbonHeight - @iconHeight - @ribbonBendTop;
+    x-left: @iconWidth - @ribbonHeight + @ribbonBendRight + 2;
+    x-width: @ribbonWidth;
+    x-height: @ribbonHeight;
+    x-margin-top: -@ribbonHeight;
+    background-repeat: no-repeat;
+    x-border: 1px solid red;
+    
+    &.bonus {
+      background-image: url('../img/en/ribbon-bonus.png');
+    }
+    &.coming-soon {
+      background-image: url('../img/en/ribbon-coming-soon.png');
+    }
+    &.credits-10 {
+      background-image: url('../img/en/ribbon-credits-10.png');
+    }
+    &.credits-20 {
+      background-image: url('../img/en/ribbon-credits-20.png');
+    }
+    &.credits-30 {
+      background-image: url('../img/en/ribbon-credits-30.png');
+    }
+    &.credits-40 {
+      background-image: url('../img/en/ribbon-credits-40.png');
+    }
+    &.credits-50 {
+      background-image: url('../img/en/ribbon-credits-50.png');
+    }
+    &.credits-60 {
+      background-image: url('../img/en/ribbon-credits-60.png');
+    }
+    &.credits-70 {
+      background-image: url('../img/en/ribbon-credits-70.png');
+    }
+    &.credits-80 {
+      background-image: url('../img/en/ribbon-credits-80.png');
+    }
+    &.credits-90 {
+      background-image: url('../img/en/ribbon-credits-90.png');
+    }
+    &.credits-100 {
+      background-image: url('../img/en/ribbon-credits-100.png');
+    }
+    &.included {
+      background-image: url('../img/en/ribbon-included.png');
+    }
+    &.new {
+      background-image: url('../img/en/ribbon-new.png');
+    }
+    &.none {
+      background-image: none;
+    }
+  }
+  
+  .progress {
+    x-position: relative;
+    position: absolute;
+    x-top: -10px;
+    x-left: 8px;
+    bottom: 10px;
+    left: 8px;
+    width: 78px;
+    height: 10px;
+    display: none;
+    x-margin: -12px 0 0 0;
+    margin: 0;
+    border: 1px solid #009ecc;
+  }
+}

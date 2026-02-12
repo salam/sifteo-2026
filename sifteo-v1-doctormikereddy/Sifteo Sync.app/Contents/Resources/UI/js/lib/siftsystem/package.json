@@ -1,0 +1,33 @@
+{
+  "name": "siftsystem",
+  "version": "0.0.0",
+  "description": "High-level wrapper around siftSystem JavaScript API exposed by Sifteo Sync.",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/sifteo/js-siftsystem.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sifteo/js-siftsystem/issues"
+  },
+  "author": {
+    "name": "Jared Hanson",
+    "email": "jared@sifteo.com"
+  },
+  "main": "main",
+  "dependencies": {
+  },
+  "devDependencies": {
+    "mocha-phantomjs": "2.x.x",
+    "deamdify": "0.1.x"
+  },
+  "browserify": {
+    "transform": "deamdify"
+  },
+  "volo": {
+    "dependencies": {
+      "class": "github:anchorjs/class/master",
+      "events": "github:anchorjs/events/master"
+    }
+  }
+}

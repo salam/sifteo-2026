@@ -1,0 +1,15 @@
+
+
+Versions
+
+First version shipped (Barnes & Noble era) October 2012
+launcher: v0.9.8-196-g2c9206e
+base:     v0.9.9-45-g9c4cb2a
+
+Distributed with Sifteo Sync 0.9.8+128.3c40ce4
+launcher: v0.9.10-149-gad61c78
+base:     v0.9.10-150-gad78c4f
+
+Distributed with Sifteo Sync 0.9.9
+launcher: v1.0.0
+base:     v1.0.0

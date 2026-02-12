@@ -1,0 +1,10 @@
+p.dlg-status {
+  display: inline-block;
+  margin: 5px 10px 0 0;
+  text-align: right;
+  vertical-align: middle;
+}
+
+p.dlg-status.error {
+    color: #b94a48;
+}

@@ -1,0 +1,98 @@
+.tip {
+  position: absolute;
+  z-index: 1020;
+  display: block;
+  padding: 5px;
+  font-size: 11px;
+  filter: alpha(opacity=0);
+  visibility: visible;
+}
+
+.tip-inner {
+  max-width: 200px;
+  padding: 3px 8px;
+  color: #ffffff;
+  text-align: center;
+  text-decoration: none;
+  background-color: #000000;
+  -webkit-border-radius: 4px;
+     -moz-border-radius: 4px;
+          border-radius: 4px;
+}
+
+.tip-arrow {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.tip.north {
+  margin-top: -2px;
+}
+
+.tip.east {
+  margin-left: 2px;
+}
+
+.tip.south {
+  margin-top: 2px;
+}
+
+.tip.west {
+  margin-left: -2px;
+}
+
+.tip.north .tip-arrow {
+  bottom: 0;
+  left: 50%;
+  margin-left: -5px;
+  border-top: 5px solid #000000;
+  border-right: 5px solid transparent;
+  border-left: 5px solid transparent;
+}
+
+.tip.west .tip-arrow,
+.tip.north-west .tip-arrow,
+.tip.south-west .tip-arrow {
+  top: 50%;
+  right: 0;
+  margin-top: -5px;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 5px solid #000000;
+}
+
+.tip.south .tip-arrow {
+  top: 0;
+  left: 50%;
+  margin-left: -5px;
+  border-right: 5px solid transparent;
+  border-bottom: 5px solid #000000;
+  border-left: 5px solid transparent;
+}
+
+.tip.east .tip-arrow,
+.tip.north-east .tip-arrow,
+.tip.south-east .tip-arrow {
+  top: 50%;
+  left: 0;
+  margin-top: -5px;
+  border-top: 5px solid transparent;
+  border-right: 5px solid #000000;
+  border-bottom: 5px solid transparent;
+}
+
+.tip.north-west .tip-arrow,
+.tip.north-east .tip-arrow {
+  top: 25%;
+}
+
+.tip.south-west .tip-arrow,
+.tip.south-east .tip-arrow {
+  top: 75%;
+}
+
+.tip.in {
+  opacity: 0.8;
+  filter: alpha(opacity=80);
+}

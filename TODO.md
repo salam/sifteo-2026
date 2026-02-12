@@ -2,25 +2,25 @@
 
 ## Asset Upload Pipeline
 
-- [ ] **Implement image asset encoding** - Convert PNG/BMP images to the cube's native format (compressed tiles, RGB332 palette). The original SDK used a custom asset pipeline in SiftRunner; the opcode (`ASSET_UPLOAD_HEADER` 68, `ASSET_UPLOAD` 56) and response (`ASSET_UPLOAD_RESULT` 73) are documented but the exact compression format needs to be verified against the decompiled `asset_helper.py`.
+- [x] **Implement image asset encoding** - `encode_image()` converts PNG/BMP/JPEG to RGB332 + CRC via Pillow. Also `encode_image_rgb()` and `encode_image_rgba()` for raw pixel data. See `src/sifteo/assets.py`.
 
-- [ ] **Implement image upload** - Send encoded image data to cube flash via the chunked upload protocol (28 bytes per packet + sequence ID). Handle upload result responses (OK / CRC fail / disk full / misalignment).
+- [x] **Implement image upload** - `AssetManager.upload_bytes()` and `upload_file()` implement the chunked upload protocol (28 bytes/packet + seq ID). Handles upload result responses (OK / CRC fail / disk full / misalignment). See `src/sifteo/assets.py`.
 
-- [ ] **Implement sound asset encoding and upload** - Same upload protocol but for sound assets (type=1). Determine the audio format the cubes expect (sample rate, bit depth, compression).
+- [x] **Implement sound asset encoding and upload** - `encode_sound()` converts WAV files (PCM 8/16/24/32-bit and IEEE float 32/64-bit) to 22050 Hz mono float32 samples + CRC. Handles stereo mixdown and sample rate resampling. `AssetManager.upload_sound()` encodes and uploads in one step. See `src/sifteo/assets.py`.
 
-- [ ] **Implement `blit_image` in the Cube API** - Wire up `GRAPHICS_IMAGE_TO_FRAMEBUFFER` (opcode 84) with proper app_id and asset_id parameters so uploaded images can be drawn to the screen.
+- [x] **Implement `blit_image` in the Cube API** - `Cube.image()` sends `GRAPHICS_IMAGE` (opcode 84) with app_id, asset_id, position, size, scale, and rotation. See `src/sifteo/cube.py`.
 
-- [ ] **Asset inventory and management** - Implement `APP_INFO_REQUEST` (60), `ASSET_INVENTORY_REQUEST` (61), `AVAILABLE_STORAGE` (62), and `APP_DELETE_ALL_ASSETS` (58) to query and manage assets stored on cube flash.
+- [x] **Asset inventory and management** - `AssetManager` implements `query_app_info()` (60), `query_asset_inventory()` (61), `query_available_storage()` (62), `delete_all_assets()` (58), `delete_asset()` (59), and `query_app_list()` (70). See `src/sifteo/assets.py`.
 
-- [ ] **CRC verification** - Implement `ASSET_VERIFY_CRC_REQUEST` (153) to verify uploaded assets weren't corrupted.
+- [x] **CRC verification** - `AssetManager.verify_crc()` implements `ASSET_VERIFY_CRC_REQUEST` (153) and parses the response with original and calculated CRC values. Also `upload_and_verify()` for combined upload + verify.
 
 ## Game Upload (Full .siftapp Support)
 
-- [ ] **Understand the .siftapp format** - The original SDK compiled games as .NET DLLs that communicated with SiftRunner via JSON-RPC over TCP (localhost:7000). Determine if we want to support this format or define a new Python-native game format.
+- [x] **Understand the .siftapp format** - Investigated: `.siftapp` files are .NET DLLs loaded via `Assembly.LoadFrom()`, communicating over JSON-RPC TCP localhost:7000. The original Python runner used `manifest.json` per app directory. **Decision:** We do NOT support the .NET DLL format. Our Python `BaseApp` subclass is the replacement -- the class itself serves as the manifest with `APP_NAME`, `IMAGES`, and `SOUNDS` class attributes.
 
-- [ ] **App registration on cubes** - When uploading assets, each app has a 32-bit app ID. Implement app registration so cubes know which assets belong to which game.
+- [x] **App registration on cubes** - `BaseApp` now supports declarative asset management: set `APP_NAME` (auto-generates 32-bit app_id via CRC32) or `APP_ID` (explicit), plus `IMAGES` and `SOUNDS` dicts mapping names to file paths. Assets are smart-synced to all cubes before `setup()` is called (only missing assets are uploaded). Use `self.app_id` and `self.asset_id("name")` in game code. See `src/sifteo/app.py` and `src/sifteo/assets.py`.
 
-- [ ] **Framebuffer download** - Implement `FRAME_BUFFER_DUMP_REQUEST` (157) and the download response handlers (158, 159) to read back what's currently on a cube's screen, useful for debugging asset rendering.
+- [x] **Framebuffer download** - `AssetManager.download_framebuffer()` implements `FRAME_BUFFER_DUMP_REQUEST` (157) and parses the download response (158 header, 159 data chunks). Returns `FrameBuffer` with width, height, bpp, and raw pixel data.
 
 ## Platform & Runtime
 
@@ -37,22 +37,22 @@
 
 ## Library Improvements
 
-- [ ] **Sound playback** - The protocol supports sound commands (`sound.play`, `sound.stop`, etc. via JSON-RPC) and the cube has audio output. Implement the sound API.
+- [x] **Sound playback** - `SoundMixer` provides host-side sound playback (cubes have no speakers — the original SDK played sounds on the host via `siftx.sound`). Uses macOS `afplay` as a zero-dependency backend. Integrated into `BaseApp` as `self.sound`. See `src/sifteo/sound.py`.
 
-- [ ] **Firmware version checking** - Query and display cube firmware versions on startup; warn if incompatible with dongle firmware.
+- [x] **Firmware version checking** - `Cube.request_firmware_version()` sends `CUBE_FW_VERSION` (63); `FIRMWARE_VERSION` (141) response is parsed and stored as `cube.firmware_version`. Called automatically during `initialize_state()`. `FirmwareVersionEvent` dispatched to `BaseApp.on_firmware_version()`. See `src/sifteo/cube.py`.
 
-- [ ] **Battery level monitoring** - Handle `BATTERY_LOW` (140) events and expose battery state in the Cube API.
+- [x] **Battery level monitoring** - `BATTERY_LOW` (140) events set `cube.battery_low = True` and dispatch `BatteryLowEvent` to `BaseApp.on_battery_low()`. See `src/sifteo/cube.py`, `src/sifteo/app.py`.
 
-- [ ] **Dock state detection** - Handle `DOCK_STATE` (143) and `DOCK_LOCATION` (144) events for charging dock awareness.
+- [x] **Dock state detection** - `DOCK_STATE` (143) and `DOCK_LOCATION` (144) events parsed in `handle_event()`, stored as `cube.docked` and `cube.dock_location`. `DockStateEvent` dispatched to `BaseApp.on_dock()`. See `src/sifteo/cube.py`, `src/sifteo/app.py`.
 
-- [ ] **Pixel-level drawing** - Expose `GRAPHICS_PUT_PIXEL` (85) in the Cube API for per-pixel drawing.
+- [x] **Pixel-level drawing** - `Cube.put_pixel(x, y, r, g, b)` and `put_pixel_color(x, y, color_rgb8)` send `GRAPHICS_PUT_PIXEL` (85). See `src/sifteo/cube.py`, `src/sifteo/protocol.py`.
 
-- [ ] **Display rotation** - Expose `GRAPHICS_SET_ROTATION` (86) so games can rotate the display orientation.
+- [x] **Display rotation** - `Cube.orientation` setter now sends `GRAPHICS_SET_ROTATION` (86) to the cube hardware in addition to tracking state locally. See `src/sifteo/cube.py`, `src/sifteo/protocol.py`.
 
-- [ ] **Unit tests** - Add tests for protocol encoding/decoding, message construction, color conversion, and event parsing (can run without hardware using mock data).
+- [x] **Unit tests** - 79 tests in `tests/test_protocol.py` and `tests/test_cube.py` covering message serialization, pack/unpack helpers, color conversion, all command builders, all event types (tilt, button, neighbor, shake, battery, firmware, dock), display methods, orientation, and state management. All tests run without hardware using mock data.
 
 ## Documentation
 
-- [ ] **Asset format documentation** - Document the exact binary format for image and sound assets as found in the decrypted sources.
+- [x] **Asset format documentation** - Document the exact binary format for image and sound assets as found in the decrypted sources. See `docs/asset-formats.md`.
 
-- [ ] **Game development guide** - Write a tutorial for creating games with the `BaseApp` API, covering display, input, neighbors, and lifecycle.
+- [x] **Game development guide** - Write a tutorial for creating games with the `BaseApp` API, covering display, input, neighbors, and lifecycle. See `docs/game-development-guide.md`.

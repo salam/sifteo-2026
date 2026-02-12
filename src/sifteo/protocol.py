@@ -277,6 +277,17 @@ def cmd_blit_image(cube_id: int, app_id: int, asset_id: int,
                struct.pack("<BBB", w, h, rot_scale))
     return Message(Op.GRAPHICS_IMAGE, cube_id, payload)
 
+def cmd_put_pixel(cube_id: int, x: int, y: int, color_rgb8: int) -> Message:
+    """Draw a single pixel on the cube's screen."""
+    payload = struct.pack("<BBB", x, y, color_rgb8)
+    return Message(Op.GRAPHICS_PUT_PIXEL, cube_id, payload)
+
+
+def cmd_set_rotation(cube_id: int, rotation: int) -> Message:
+    """Set the cube's display rotation (0-3)."""
+    return Message(Op.GRAPHICS_SET_ROTATION, cube_id, pack_u8(rotation))
+
+
 def cmd_request_app_list(cube_id: int) -> Message:
     """Request list of installed apps on a cube."""
     return Message(Op.APP_LIST_REQUEST, cube_id)

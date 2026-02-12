@@ -4,6 +4,8 @@ Open-source host software for [Sifteo V1 Cubes](https://en.wikipedia.org/wiki/Si
 
 Replaces the original 32-bit Intel SiftRunner application that no longer runs on current macOS versions. Communicates directly with the Sifteo USB dongle via `pyusb`/`libusb`, driving the cubes' 128x128 LCD displays, reading accelerometer tilt, button presses, shake gestures, and neighbor detection - all from Python.
 
+![Sifteo 2026 logo](./sifteo-v1.jpg)
+
 ## Demo
 
 ```
@@ -68,6 +70,21 @@ if __name__ == "__main__":
 ```
 
 See [examples/hello_world.py](examples/hello_world.py) for a complete example with color cycling, tilt control, shake randomization, and neighbor synchronization.
+
+## Event support
+
+`sudo python3.9 -m sifteo demo` will detect events and recognize context of the cubes.
+
+```bash
+  ShakeEvent(cube=2)
+  TiltEvent(cube=2, x=0, y=0, z=1)
+  ShakeEvent(cube=2)
+  TiltEvent(cube=2, x=1, y=0, z=1)
+  TiltEvent(cube=2, x=1, y=0, z=2)
+  NeighborEvent(cube=3, side=1, neighbor=2)
+  NeighborEvent(cube=3, side=1, removed)
+  TiltEvent(cube=1, x=2, y=0, z=0)
+```
 
 ## Architecture
 
@@ -140,9 +157,7 @@ This project would not have been possible without the work of several people and
 
 - **[@dannyow](https://github.com/dannyow)** - For [sifteo-gen1-redux](https://github.com/dannyow/sifteo-gen1-redux), the community effort to preserve and rebuild the Sifteo V1 ecosystem. The packaged SiftRunner installer and collected game apps were the starting point for this project.
 
-- **[Dr. Mike Reddy](http://doctormikereddy.com/)** ([@docmikereddy](https://twitter.com/docmikereddy)) - For his blog post [Sifteo: Resurrecting a Legend](http://doctormikereddy.com/sifteo-resurrecting-a-legend/), which documented the effort to locate original Sifteo apps and binaries, and for his extensive work preserving Sifteo's history.
-
-- **[Peter Shinners](https://github.com/pshinners)** - For the original `vec2` utility code (2008) found in the decrypted Sifteo sources.
+- **[Dr. Mike Reddy]**  - For his blog post [Sifteo: Resurrecting a Legend](http://doctormikereddy.com/sifteo-resurrecting-a-legend/), which documented the effort to locate original Sifteo apps and binaries, and for his extensive work preserving Sifteo's history.
 
 - **[pyusb](https://github.com/pyusb/pyusb)** contributors - For the Python USB library that made direct dongle communication on modern macOS possible without writing a kernel extension.
 

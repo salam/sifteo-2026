@@ -12,6 +12,7 @@ from .protocol import (
     cmd_request_tilt, cmd_request_button, cmd_request_neighbors,
     cmd_request_device_id, cmd_game_start, cmd_game_stop,
     cmd_fill_screen, cmd_draw_rect, cmd_repaint, cmd_blit_image,
+    cmd_put_pixel, cmd_set_rotation, cmd_request_cube_fw_version,
     rgb_to_rgb332, unpack_u8, unpack_u16, unpack_u32, op_name,
 )
 
@@ -65,6 +66,27 @@ class BatteryLowEvent(CubeEvent):
     def __repr__(self):
         return f"BatteryLowEvent(cube={self.cube_id})"
 
+class FirmwareVersionEvent(CubeEvent):
+    def __init__(self, cube_id: int, version: str):
+        super().__init__(cube_id)
+        self.version = version
+    def __repr__(self):
+        return f"FirmwareVersionEvent(cube={self.cube_id}, version={self.version!r})"
+
+class DockStateEvent(CubeEvent):
+    def __init__(self, cube_id: int, docked: bool):
+        super().__init__(cube_id)
+        self.docked = docked
+    def __repr__(self):
+        return f"DockStateEvent(cube={self.cube_id}, docked={self.docked})"
+
+class DockLocationEvent(CubeEvent):
+    def __init__(self, cube_id: int, location: int):
+        super().__init__(cube_id)
+        self.location = location
+    def __repr__(self):
+        return f"DockLocationEvent(cube={self.cube_id}, location={self.location})"
+
 
 class Cube:
     """Represents a physical Sifteo V1 cube.
@@ -82,6 +104,10 @@ class Cube:
         self.button_pressed = False
         self.neighbors = [None, None, None, None]  # 4 sides
         self.device_id: Optional[str] = None
+        self.firmware_version: Optional[str] = None
+        self.battery_low: bool = False
+        self.docked: bool = False
+        self.dock_location: Optional[int] = None
         self.online = True
         self.last_seen = time.time()
         self._draw_count = 0
@@ -114,6 +140,17 @@ class Cube:
                                   x, y, src_x, src_y, w, h, scale, rotation))
         self._draw_count += 1
 
+    def put_pixel(self, x: int, y: int, r: int, g: int, b: int):
+        """Draw a single pixel at (x, y) with an RGB color (0-255 each)."""
+        color = rgb_to_rgb332(r, g, b)
+        self._send(cmd_put_pixel(self.id, x, y, color))
+        self._draw_count += 1
+
+    def put_pixel_color(self, x: int, y: int, color_rgb8: int):
+        """Draw a single pixel at (x, y) with a raw RGB332 color byte."""
+        self._send(cmd_put_pixel(self.id, x, y, color_rgb8))
+        self._draw_count += 1
+
     def repaint(self):
         """Repaint the display. Call after drawing operations."""
         if self._draw_count > 0:
@@ -128,6 +165,7 @@ class Cube:
     @orientation.setter
     def orientation(self, value: int):
         self._orientation = value % 4
+        self._send(cmd_set_rotation(self.id, self._orientation))
 
     # -- Sensor Queries --
 
@@ -147,11 +185,16 @@ class Cube:
         """Request hardware device ID (async, result via event)."""
         self._send(cmd_request_device_id(self.id))
 
+    def request_firmware_version(self):
+        """Request firmware version from the cube (async, result via event)."""
+        self._send(cmd_request_cube_fw_version(self.id))
+
     def initialize_state(self):
-        """Query all sensor states (tilt, button, neighbors)."""
+        """Query all sensor states (tilt, button, neighbors, firmware)."""
         self.request_tilt()
         self.request_button()
         self.request_neighbors()
+        self.request_firmware_version()
 
     # -- Game Control --
 
@@ -200,7 +243,28 @@ class Cube:
             return ShakeEvent(self.id)
 
         elif op == Op.BATTERY_LOW:
+            self.battery_low = True
             return BatteryLowEvent(self.id)
+
+        elif op == Op.FIRMWARE_VERSION:
+            if len(payload) >= 3:
+                major, minor, patch = payload[0], payload[1], payload[2]
+                self.firmware_version = f"{major}.{minor}.{patch}"
+            elif len(payload) >= 1:
+                self.firmware_version = payload.hex()
+            else:
+                self.firmware_version = "unknown"
+            return FirmwareVersionEvent(self.id, self.firmware_version)
+
+        elif op == Op.DOCK_STATE:
+            docked = payload[0] != 0 if len(payload) >= 1 else False
+            self.docked = docked
+            return DockStateEvent(self.id, docked)
+
+        elif op == Op.DOCK_LOCATION:
+            location = payload[0] if len(payload) >= 1 else 0
+            self.dock_location = location
+            return DockLocationEvent(self.id, location)
 
         elif op == Op.DEVICE_ID:
             self.device_id = payload.hex()

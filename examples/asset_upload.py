@@ -2,12 +2,15 @@
 """
 Asset Upload Example - Sifteo V1.
 
-Demonstrates uploading image assets to cube flash and displaying them,
+Demonstrates uploading image and sound assets to cube flash,
 querying asset inventory, CRC verification, and framebuffer download.
 
 Usage:
     # Upload a PNG/BMP/JPEG image (auto-encodes to RGB332):
     sudo python3 examples/asset_upload.py logo.png
+
+    # Upload a WAV sound (auto-encodes to float32 22050Hz mono):
+    sudo python3 examples/asset_upload.py beep.wav
 
     # Upload a pre-compiled .siftimg file:
     sudo python3 examples/asset_upload.py walk.siftimg
@@ -32,11 +35,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from sifteo import (
     BaseApp, Cube, AssetManager, ASSET_TYPE_IMAGE, ASSET_TYPE_SOUND,
-    encode_image, read_siftimg,
+    encode_image, encode_sound, read_siftimg,
 )
 
 # Image file extensions that should be encoded to RGB332
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.webp'}
+
+# Sound file extensions that should be encoded to float32
+SOUND_EXTENSIONS = {'.wav'}
 
 
 def progress_bar(sent: int, total: int):
@@ -127,16 +133,22 @@ class AssetUploadDemo(BaseApp):
         file_path = self.args.file
         app_id = self.args.app_id
         asset_id = self.args.asset_id
-        asset_type = ASSET_TYPE_SOUND if self.args.sound else ASSET_TYPE_IMAGE
         ext = os.path.splitext(file_path)[1].lower()
-        needs_encoding = ext in IMAGE_EXTENSIONS
 
-        type_name = "sound" if self.args.sound else "image"
+        # Auto-detect asset type from extension (--sound flag overrides)
+        is_sound = self.args.sound or ext in SOUND_EXTENSIONS
+        asset_type = ASSET_TYPE_SOUND if is_sound else ASSET_TYPE_IMAGE
+
+        type_name = "sound" if is_sound else "image"
         print(f"\nUploading {type_name}: {file_path}")
         print(f"  App ID: {app_id}, Asset ID: {asset_id}")
         print(f"  File size: {os.path.getsize(file_path)} bytes")
 
-        if needs_encoding:
+        if ext in SOUND_EXTENSIONS:
+            print(f"  Encoding: {ext} -> float32 22050Hz mono")
+            data = encode_sound(file_path)
+            print(f"  Encoded size: {len(data)} bytes (including 4-byte CRC)")
+        elif ext in IMAGE_EXTENSIONS:
             w = self.args.width
             h = self.args.height
             print(f"  Encoding: {ext} -> RGB332 ({w}x{h})")
