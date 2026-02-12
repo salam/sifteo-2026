@@ -32,7 +32,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from sifteo import (
     BaseApp, Cube, AssetManager, ASSET_TYPE_IMAGE, ASSET_TYPE_SOUND,
+    encode_image, read_siftimg,
 )
+
+# Image file extensions that should be encoded to RGB332
+IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.webp'}
 
 
 def progress_bar(sent: int, total: int):
@@ -124,16 +128,29 @@ class AssetUploadDemo(BaseApp):
         app_id = self.args.app_id
         asset_id = self.args.asset_id
         asset_type = ASSET_TYPE_SOUND if self.args.sound else ASSET_TYPE_IMAGE
-        type_name = "sound" if self.args.sound else "image"
+        ext = os.path.splitext(file_path)[1].lower()
+        needs_encoding = ext in IMAGE_EXTENSIONS
 
+        type_name = "sound" if self.args.sound else "image"
         print(f"\nUploading {type_name}: {file_path}")
         print(f"  App ID: {app_id}, Asset ID: {asset_id}")
-        print(f"  Size: {os.path.getsize(file_path)} bytes")
+        print(f"  File size: {os.path.getsize(file_path)} bytes")
+
+        if needs_encoding:
+            w = self.args.width
+            h = self.args.height
+            print(f"  Encoding: {ext} -> RGB332 ({w}x{h})")
+            data = encode_image(file_path, w, h)
+            print(f"  Encoded size: {len(data)} bytes (including 4-byte CRC)")
+        else:
+            print(f"  Format: raw ({ext or 'binary'})")
+            data = read_siftimg(file_path)
+
         print()
 
         try:
-            ok = assets.upload_file(
-                cube.id, app_id, asset_id, file_path,
+            ok = assets.upload_bytes(
+                cube.id, app_id, asset_id, data,
                 asset_type=asset_type, progress=progress_bar,
             )
             if ok:
@@ -171,6 +188,10 @@ def main():
                         help="Application ID (default: 0)")
     parser.add_argument("--asset-id", type=int, default=0,
                         help="Asset ID (default: 0)")
+    parser.add_argument("--width", type=int, default=128,
+                        help="Image width for PNG/BMP encoding (default: 128)")
+    parser.add_argument("--height", type=int, default=128,
+                        help="Image height for PNG/BMP encoding (default: 128)")
     parser.add_argument("--sound", action="store_true",
                         help="Upload as sound asset (default: image)")
     parser.add_argument("--verify", action="store_true", default=True,

@@ -1,0 +1,3 @@
+[submodule "sifteo-gen1-redux"]
+	path = sifteo-gen1-redux
+	url = https://github.com/dannyow/sifteo-gen1-redux
