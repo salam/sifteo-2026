@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+._*
+
+# Large binary files (install from sifteo-gen1-redux releases)
+*.pkg
+
+# Extracted application bundle (can be re-extracted from .pkg)
+extracted/
+
+# Claudine extension state
+.claudine/
+.claude/

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sifteo"
+version = "0.1.0"
+description = "Open-source host software for Sifteo V1 Cubes on Apple Silicon macOS"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+dependencies = [
+    "pyusb>=1.2",
+    "hidapi>=0.14",
+]
+
+[project.scripts]
+sifteo = "sifteo.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
