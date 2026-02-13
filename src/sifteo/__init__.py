@@ -18,8 +18,10 @@ from .assets import (
     AssetManager, AppInfo, AssetInfo, CRCResult, FrameBuffer,
     UploadError, AssetSyncError,
     AssetDeclaration, AssetManifest,
+    SiftAppHeader, SiftAppInstallResult,
     encode_image, encode_image_rgba, encode_image_rgb,
     encode_sound,
+    read_siftapp, parse_siftapp_header, extract_siftapp_payload,
     read_siftimg, read_siftimg_crc,
 )
 
@@ -32,8 +34,10 @@ __all__ = [
     "AssetManager", "AppInfo", "AssetInfo", "CRCResult", "FrameBuffer",
     "UploadError", "AssetSyncError",
     "AssetDeclaration", "AssetManifest",
+    "SiftAppHeader", "SiftAppInstallResult",
     "encode_image", "encode_image_rgba", "encode_image_rgb",
     "encode_sound",
+    "read_siftapp", "parse_siftapp_header", "extract_siftapp_payload",
     "read_siftimg", "read_siftimg_crc",
     "rgb_to_rgb332", "rgb332_to_rgb",
     "ASSET_TYPE_IMAGE", "ASSET_TYPE_SOUND",

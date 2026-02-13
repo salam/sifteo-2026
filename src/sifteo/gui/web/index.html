@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sifteo Cube Manager</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Top bar -->
+    <header id="topbar">
+        <div class="topbar-left">
+            <svg class="logo" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="3"/>
+                <circle cx="12" cy="12" r="3"/>
+            </svg>
+            <span class="app-title">Sifteo Cube Manager</span>
+        </div>
+        <div class="topbar-right">
+            <span id="cube-count"></span>
+            <span id="status-dot" class="dot dot-offline"></span>
+            <span id="status-label">Offline</span>
+            <button id="btn-settings" class="btn-icon" onclick="toggleSettings()" title="Settings">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Settings panel -->
+    <div id="settings-panel" class="settings-panel" style="display:none">
+        <div class="settings-group">
+            <div class="settings-row">
+                <label class="settings-label">Upload Speed</label>
+                <span id="speed-value" class="settings-value">Default (25 ms)</span>
+            </div>
+            <div class="settings-slider-row">
+                <span class="settings-hint">Slow</span>
+                <input type="range" id="speed-slider" class="settings-slider" min="0" max="100" value="0">
+                <span class="settings-hint">Fast</span>
+            </div>
+            <p class="settings-desc">Lower gap = faster uploads but may cause write timeouts on some dongles.</p>
+        </div>
+        <div class="settings-group">
+            <div class="settings-row">
+                <label class="settings-label">Write Retries</label>
+                <span id="retries-value" class="settings-value">2</span>
+            </div>
+            <div class="settings-slider-row">
+                <span class="settings-hint">0</span>
+                <input type="range" id="retries-slider" class="settings-slider" min="0" max="10" value="2">
+                <span class="settings-hint">10</span>
+            </div>
+            <p class="settings-desc">Number of retry attempts after a USB write timeout before failing.</p>
+        </div>
+    </div>
+
+    <!-- Landing screen (not connected) -->
+    <main id="landing" class="screen">
+        <div class="landing-content">
+            <div id="dongle-icon" class="dongle-icon">
+                <svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="18" y="8" width="28" height="40" rx="4"/>
+                    <rect x="24" y="48" width="16" height="10" rx="2"/>
+                    <circle cx="32" cy="28" r="6"/>
+                    <path d="M26 18 L38 18"/>
+                </svg>
+            </div>
+            <p id="landing-msg" class="landing-msg">Looking for dongle...</p>
+            <button id="btn-connect" class="btn btn-primary" style="display:none">Connect</button>
+
+            <div id="root-hint" class="root-hint" style="display:none">
+                <p>USB access requires elevated permissions:</p>
+                <div class="copy-box">
+                    <code id="sudo-cmd">sudo python3 -m sifteo gui</code>
+                    <button class="btn btn-small" onclick="copySudoCmd()">Copy</button>
+                </div>
+                <button id="btn-relaunch" class="btn btn-secondary" onclick="relaunchAsRoot()">
+                    Relaunch with Permissions
+                </button>
+            </div>
+
+            <div id="connect-error" class="error-msg" style="display:none"></div>
+        </div>
+    </main>
+
+    <!-- Dashboard (connected) -->
+    <main id="dashboard" class="screen" style="display:none">
+        <div class="dashboard-header">
+            <h2>Games</h2>
+            <div class="dashboard-controls">
+                <label for="cube-select">Install on:</label>
+                <select id="cube-select">
+                    <option value="all">All cubes</option>
+                </select>
+                <button id="btn-disconnect" class="btn btn-small btn-ghost" onclick="doDisconnect()">Disconnect</button>
+            </div>
+        </div>
+
+        <div id="game-grid" class="game-grid"></div>
+
+        <div id="cube-bar" class="cube-bar">
+            <div class="cube-bar-label">Cubes</div>
+            <div id="cube-list" class="cube-list"></div>
+        </div>
+    </main>
+
+    <!-- Console log panel -->
+    <div id="console-panel" class="console-panel collapsed">
+        <div class="console-header">
+            <span class="console-title">Console</span>
+            <div class="console-actions">
+                <button class="btn btn-small" onclick="clearConsole()">Clear</button>
+                <button class="btn btn-small" id="btn-console-toggle" onclick="toggleConsole()">Show</button>
+            </div>
+        </div>
+        <div id="console-log" class="console-log"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

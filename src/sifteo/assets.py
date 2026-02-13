@@ -15,6 +15,8 @@ Upload protocol:
     4. Receive ASSET_UPLOAD_RESULT (1=OK, 2=CRC fail, 3=disk full, 4=misaligned)
 
 Each app has a 32-bit app_id. Assets are scoped to their app_id.
+
+Legacy `.siftapp` binaries are also supported as opaque payload installs.
 """
 
 from __future__ import annotations
@@ -25,13 +27,15 @@ import time
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Callable, Union
+from typing import Optional, Callable, Union, Literal
 
 from .dongle import SifteoDongle
 from .protocol import (
+    USB_MSG_LEN,
     Op, Message, DONGLE_ADDRESS,
     ASSET_TYPE_IMAGE, ASSET_TYPE_SOUND,
     UPLOAD_OK, UPLOAD_CRC_FAIL, UPLOAD_DISK_FULL, UPLOAD_MISALIGNMENT,
+    UPLOAD_RESULT_STATUS_IDX,
     APP_INFO_IMAGES_IDX, APP_INFO_SOUNDS_IDX, APP_INFO_BYTES_IDX,
     ASSET_INV_ASSET_ID_IDX, ASSET_INV_ASSET_TYPE_IDX,
     CRC_ORIG_IDX, CRC_CALC_IDX,
@@ -48,11 +52,26 @@ from .protocol import (
 )
 
 # Max data bytes in a single ASSET_UPLOAD chunk.
-# The legacy code uses MSG_PAYLOAD_LENGTH - 2 = 28 bytes.
-MAX_CHUNK_DATA = 28
+#
+# In this transport implementation, `Message.to_bytes()` can carry at most
+# `USB_MSG_LEN - 4` payload bytes (len/msg_id/address/opcode envelope).
+# Upload chunk payload adds 2 bytes of overhead (`byte_count` + `seq_id`),
+# so the safe data budget is:
+#   MAX_CHUNK_DATA = (USB_MSG_LEN - 4) - 2 = USB_MSG_LEN - 6
+#
+# With USB_MSG_LEN=33 this yields 27 bytes. Using 28 would truncate full
+# chunks by one byte and can trigger cube-side flash alignment failures.
+MAX_CHUNK_DATA = USB_MSG_LEN - 6
 
 # Time to wait after sending the upload header (cube flash is slow).
 HEADER_PROCESS_DELAY = 3.0
+
+# Legacy .siftapp package markers (from preserved Siftrunner bundles).
+SIFTAPP_HEADER_SIZE = 16
+SIFTAPP_MAGIC_PREFIX = b"\x5D\xB9\x5E\xCC\x86\x2B\x75\x0E"
+SIFTAPP_MAGIC_SUFFIX = b"\x44\xAE\x26\xFC"
+SIFTAPP_TOKEN_OFFSET = 8
+SIFTAPP_INTERNAL_ID_OFFSET = 10
 
 
 @dataclass
@@ -136,6 +155,27 @@ class AssetManifest:
     @property
     def sound_count(self) -> int:
         return sum(1 for a in self.assets.values() if a.asset_type == ASSET_TYPE_SOUND)
+
+
+@dataclass
+class SiftAppHeader:
+    """Best-effort parsed metadata from a legacy `.siftapp` header."""
+
+    valid: bool
+    token: Optional[int] = None
+    internal_id: Optional[int] = None
+
+
+@dataclass
+class SiftAppInstallResult:
+    """Result metadata for a `.siftapp` install operation."""
+
+    app_id: int
+    asset_id: int
+    bytes_uploaded: int
+    app_id_source: Literal["explicit", "header", "filename_crc32"]
+    payload_shape: Literal["container", "body"]
+    header: SiftAppHeader
 
 
 # -- Image Encoding --
@@ -370,6 +410,77 @@ def read_siftimg(file_path: Union[str, Path]) -> bytes:
         return f.read()
 
 
+def read_siftapp(file_path: Union[str, Path]) -> bytes:
+    """Read a legacy `.siftapp` bundle file as raw bytes."""
+    with open(file_path, "rb") as f:
+        return f.read()
+
+
+def _has_valid_trailing_crc(data: bytes) -> bool:
+    """Return True if data ends with CRC32(data[:-4]) in little-endian."""
+    if len(data) < CRC_SIZE:
+        return False
+    expected = struct.unpack_from("<I", data, len(data) - CRC_SIZE)[0]
+    actual = zlib.crc32(data[:-CRC_SIZE]) & 0xFFFFFFFF
+    return expected == actual
+
+
+def ensure_trailing_crc(data: bytes) -> bytes:
+    """Ensure payload has a valid trailing CRC expected by cube assets."""
+    if _has_valid_trailing_crc(data):
+        return data
+    crc = zlib.crc32(data) & 0xFFFFFFFF
+    return data + struct.pack("<I", crc)
+
+
+def parse_siftapp_header(data: bytes) -> SiftAppHeader:
+    """Parse the fixed 16-byte legacy `.siftapp` header if present.
+
+    Notes:
+        - This is a best-effort parser for preserved Sifteo bundle files.
+        - `internal_id` is an inferred app identifier byte used by old bundles.
+    """
+    if len(data) < SIFTAPP_HEADER_SIZE:
+        return SiftAppHeader(valid=False)
+
+    if not data.startswith(SIFTAPP_MAGIC_PREFIX):
+        return SiftAppHeader(valid=False)
+
+    if data[12:16] != SIFTAPP_MAGIC_SUFFIX:
+        return SiftAppHeader(valid=False)
+
+    token = struct.unpack_from("<I", data, SIFTAPP_TOKEN_OFFSET)[0]
+    internal_id = data[SIFTAPP_INTERNAL_ID_OFFSET]
+    return SiftAppHeader(valid=True, token=token, internal_id=internal_id)
+
+
+def extract_siftapp_payload(
+    data: bytes,
+    payload_shape: Literal["container", "body"] = "container",
+) -> bytes:
+    """Extract upload payload bytes from a `.siftapp` container.
+
+    Shapes:
+        - container: upload full file bytes.
+        - body: strip the 16-byte legacy container header.
+    """
+    if payload_shape == "container":
+        return data
+    if payload_shape != "body":
+        raise ValueError(
+            "payload_shape must be 'container' or 'body', got "
+            f"{payload_shape!r}"
+        )
+    header = parse_siftapp_header(data)
+    if not header.valid:
+        raise ValueError(
+            "payload_shape='body' requires a valid .siftapp header"
+        )
+    if len(data) <= SIFTAPP_HEADER_SIZE:
+        raise ValueError("Invalid .siftapp: no body payload after header")
+    return data[SIFTAPP_HEADER_SIZE:]
+
+
 def read_siftimg_crc(file_path: Union[str, Path]) -> int:
     """Read the CRC from the last 4 bytes of a .siftimg file."""
     size = os.path.getsize(file_path)
@@ -393,6 +504,33 @@ class AssetManager:
         self._dongle = dongle
 
     # -- Response Helpers --
+
+    @staticmethod
+    def _decode_upload_status(payload: bytes) -> tuple[int, int]:
+        """Decode upload status from firmware-variant payload layouts.
+
+        Different firmware/queue paths report ASSET_UPLOAD_RESULT with
+        slightly different payload offsets. We accept all known layouts
+        and return (status, payload_index).
+        """
+        valid = {UPLOAD_OK, UPLOAD_CRC_FAIL, UPLOAD_DISK_FULL, UPLOAD_MISALIGNMENT}
+        candidate_indices = (
+            6,                         # legacy helper offset (authoritative)
+            7,                         # observed event-queue variant
+            UPLOAD_RESULT_STATUS_IDX,  # protocol constant fallback
+            5,
+            4,
+            0,
+        )
+        for idx in candidate_indices:
+            if idx < len(payload):
+                status = payload[idx]
+                if status in valid:
+                    return status, idx
+        raise UploadError(
+            "Unknown upload status layout: "
+            f"payload[{len(payload)}]={payload[:16].hex()}"
+        )
 
     def _wait_for_event(self, cube_id: int, opcode: int,
                         timeout: float = 10.0) -> Optional[Message]:
@@ -428,6 +566,21 @@ class AssetManager:
             if len(raw) >= 3 and raw[2] == opcode:
                 return raw
         return None
+
+    def _drain_response_queue(self, limit: int = 2048) -> int:
+        """Drop stale dongle-response packets and return count removed.
+
+        Upload writes now use per-packet ACKs from the response queue. Any
+        stale packets left by prior operations can be mistaken as ACKs, so we
+        clear pending responses before starting a new upload transaction.
+        """
+        drained = 0
+        while drained < limit:
+            raw = self._dongle.get_response_raw(timeout=None)
+            if raw is None:
+                break
+            drained += 1
+        return drained
 
     def _wait_for_either(self, cube_id: int, opcode: int,
                          timeout: float = 10.0) -> Optional[tuple[bytes, bool]]:
@@ -509,9 +662,14 @@ class AssetManager:
         """
         size = len(data)
 
-        # Step 1: Send upload header
-        self._dongle.send(cmd_asset_upload_header(cube_id, size, app_id,
-                                                   asset_id, asset_type))
+        # Drop stale responses so write ACK parsing starts clean.
+        self._drain_response_queue()
+
+        # Step 1: Send upload header and wait for dongle write ACK.
+        self._dongle.send(
+            cmd_asset_upload_header(cube_id, size, app_id, asset_id, asset_type),
+            wait_for_ack=True,
+        )
 
         # Step 2: Wait for cube to process header (flash is slow)
         time.sleep(HEADER_PROCESS_DELAY)
@@ -522,7 +680,10 @@ class AssetManager:
         while offset < size:
             chunk_size = min(MAX_CHUNK_DATA, size - offset)
             chunk = data[offset:offset + chunk_size]
-            self._dongle.send(cmd_asset_upload_chunk(cube_id, chunk, seq_id))
+            self._dongle.send(
+                cmd_asset_upload_chunk(cube_id, chunk, seq_id),
+                wait_for_ack=True,
+            )
             seq_id = (seq_id + 1) & 0xFF
             offset += chunk_size
             if progress:
@@ -533,29 +694,101 @@ class AssetManager:
         if result is None:
             raise UploadError("No upload result received (timed out)")
 
-        raw, from_response = result
-        # Parse status byte. The status is at a fixed offset in the payload.
-        # Legacy code: getUInt8AtOffet(rply, 6, header=2) → rply[8]
-        # Response queue raw: [radio_msg_len, 0xFF, opcode, payload...] → raw[8]
-        # Event queue raw (reconstructed): [0, cube_addr, opcode, payload...] → raw[8]
-        # Both formats have payload starting at index 3, status at payload[5] = raw[8].
-        if len(raw) > 8:
-            status = raw[8]
-        elif len(raw) > 6:
-            status = raw[6]
-        else:
-            raise UploadError("Upload result response too short")
+        raw, _from_response = result
+        # Parse status byte from the payload.
+        # Wire format: [radio_msg_len, address, opcode, payload...]
+        # Payload starts at raw[3]. UPLOAD_RESULT_STATUS_IDX is payload-relative.
+        payload = raw[3:] if len(raw) > 3 else b""
+        if not payload:
+            raise UploadError(
+                f"Upload result too short ({len(raw)} bytes, "
+                f"payload={payload.hex()})"
+            )
+        status, status_idx = self._decode_upload_status(payload)
+        status_details = (
+            f"status={status} at payload[{status_idx}], "
+            f"raw[{len(raw)}]={raw[:20].hex()}, "
+            f"payload[{len(payload)}]={payload[:16].hex()}"
+        )
 
         if status == UPLOAD_OK:
             return True
         elif status == UPLOAD_CRC_FAIL:
-            raise UploadError("CRC verification failed on cube")
+            raise UploadError(f"CRC verification failed on cube ({status_details})")
         elif status == UPLOAD_DISK_FULL:
-            raise UploadError("Cube flash storage is full")
+            raise UploadError(f"Cube flash storage is full ({status_details})")
         elif status == UPLOAD_MISALIGNMENT:
-            raise UploadError("Flash alignment error on cube")
+            raise UploadError(f"Flash alignment error on cube ({status_details})")
         else:
-            raise UploadError(f"Unknown upload status: {status}")
+            raise UploadError(
+                f"Unknown upload status: {status} at payload[{status_idx}] "
+                f"(queue={'response' if _from_response else 'event'}, "
+                f"raw[{len(raw)}]={raw[:20].hex()}, "
+                f"payload[{len(payload)}]={payload[:16].hex()})"
+            )
+
+    def install_siftapp(self, cube_id: int,
+                        siftapp_path: Union[str, Path],
+                        app_id: Optional[int] = None,
+                        prefer_header_app_id: bool = False,
+                        payload_shape: Literal["container", "body"] = "container",
+                        payload_crc_mode: Literal["append", "none"] = "append",
+                        asset_id: int = 0,
+                        asset_type: int = ASSET_TYPE_IMAGE,
+                        progress: Optional[Callable[[int, int], None]] = None
+                        ) -> SiftAppInstallResult:
+        """Install a legacy `.siftapp` binary as an opaque payload on a cube.
+
+        This preserves compatibility with archived bundle files by uploading
+        their raw bytes directly to cube flash under a selected app_id.
+
+        If `app_id` is omitted, the default app ID is `crc32(filename_stem)`.
+        This avoids collisions across legacy bundles (header internal IDs are
+        often reused across different apps). Set `prefer_header_app_id=True`
+        to opt in to the legacy header-derived ID when available.
+        """
+        path = Path(siftapp_path)
+        if not path.exists():
+            raise FileNotFoundError(f".siftapp file not found: {path}")
+
+        container_bytes = read_siftapp(path)
+        header = parse_siftapp_header(container_bytes)
+        data = extract_siftapp_payload(container_bytes, payload_shape=payload_shape)
+
+        if payload_crc_mode == "append":
+            # Cube asset uploads expect a trailing CRC32 over payload bytes.
+            # Legacy .siftapp bundles are container files and usually do not
+            # include this asset-layer CRC, so we add it when absent.
+            data = ensure_trailing_crc(data)
+        elif payload_crc_mode != "none":
+            raise ValueError(
+                "payload_crc_mode must be 'append' or 'none', got "
+                f"{payload_crc_mode!r}"
+            )
+
+        if app_id is not None:
+            resolved_app_id = app_id & 0xFFFFFFFF
+            source: Literal["explicit", "header", "filename_crc32"] = "explicit"
+        elif prefer_header_app_id and header.valid and header.internal_id is not None:
+            resolved_app_id = header.internal_id
+            source = "header"
+        else:
+            resolved_app_id = zlib.crc32(path.stem.encode("utf-8")) & 0xFFFFFFFF
+            source = "filename_crc32"
+
+        self.upload_bytes(
+            cube_id, resolved_app_id, asset_id, data,
+            asset_type=asset_type, progress=progress,
+        )
+
+        return SiftAppInstallResult(
+            app_id=resolved_app_id,
+            asset_id=asset_id,
+            bytes_uploaded=len(data),
+            app_id_source=source,
+            payload_shape=payload_shape,
+            header=header,
+        )
 
     # -- App & Asset Queries --
 

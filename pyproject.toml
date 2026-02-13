@@ -13,8 +13,14 @@ dependencies = [
     "hidapi>=0.14",
 ]
 
+[project.optional-dependencies]
+gui = ["pywebview>=5.0"]
+
 [project.scripts]
 sifteo = "sifteo.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"sifteo.gui" = ["web/**"]

@@ -13,16 +13,25 @@ Hardware Details:
     - EP 0x01 OUT (Interrupt): 34 bytes  (host -> dongle)
 
 Note on macOS:
-    The macOS HID driver claims this device automatically. The IOKit HID
-    Manager's IOHIDDeviceSetReport does NOT work for this dongle's interrupt
-    OUT endpoint (times out). We use pyusb/libusb for raw interrupt transfers
-    instead, which requires detaching the kernel driver (needs root).
+    The macOS HID driver claims this device automatically. IOHIDDeviceSetReport
+    does NOT work for this dongle's interrupt OUT endpoint (times out after ~5s).
+    We use pyusb/libusb for raw interrupt transfers instead, which requires
+    detaching the kernel driver (needs root).
 
     Run with: sudo python3 -m sifteo
+
+Communication backends:
+    - _PyUSBBackend: Uses pyusb/libusb for raw interrupt transfers. Requires
+      detaching the kernel HID driver on macOS (needs root). Primary backend.
+    - _HidapiBackend: Uses hidapi (IOHIDManager). Does NOT work on macOS for
+      this device (write times out). Kept for potential Linux hidraw use.
 """
 
 from __future__ import annotations
 
+import abc
+import os
+import sys
 import time
 import threading
 import queue
@@ -61,8 +70,213 @@ class DongleWriteError(DongleConnectionError):
     pass
 
 
+def _read_env_float(name: str, default: float, minimum: float = 0.0) -> float:
+    """Parse a non-negative float from environment, with fallback."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        print(f"WARNING: ignoring invalid {name}={raw!r}; using {default}")
+        return default
+    if value < minimum:
+        print(f"WARNING: ignoring {name}={raw!r}; must be >= {minimum}")
+        return default
+    return value
+
+
+def _read_env_int(name: str, default: int, minimum: int = 0) -> int:
+    """Parse a non-negative integer from environment, with fallback."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        print(f"WARNING: ignoring invalid {name}={raw!r}; using {default}")
+        return default
+    if value < minimum:
+        print(f"WARNING: ignoring {name}={raw!r}; must be >= {minimum}")
+        return default
+    return value
+
+
+# ---------------------------------------------------------------------------
+# Communication backends
+# ---------------------------------------------------------------------------
+
+class _DongleBackend(abc.ABC):
+    """Abstract interface for USB communication with the dongle."""
+
+    @abc.abstractmethod
+    def open(self) -> None: ...
+
+    @abc.abstractmethod
+    def close(self) -> None: ...
+
+    @abc.abstractmethod
+    def write(self, data: bytes) -> int:
+        """Write a 33-byte protocol message. Returns bytes written."""
+        ...
+
+    @abc.abstractmethod
+    def read(self, size: int, timeout_ms: int) -> Optional[bytes]:
+        """Read up to *size* bytes. Returns None on timeout."""
+        ...
+
+    @property
+    @abc.abstractmethod
+    def is_open(self) -> bool: ...
+
+    @property
+    def name(self) -> str:
+        return type(self).__name__
+
+
+class _HidapiBackend(_DongleBackend):
+    """hidapi/IOHIDManager backend (macOS, no root required).
+
+    hidapi on macOS uses IOHIDManager under the hood. hid_write() calls
+    IOHIDDeviceSetReport(kIOHIDReportTypeOutput) which goes through the
+    kernel HID driver without needing to detach it.
+
+    Buffer convention: hid_write() interprets buf[0] as report ID.
+    With report ID 0x00, hidapi strips it and sends the remaining bytes.
+    So we pass [0x00] + 33-byte message = 34 bytes total.
+    """
+
+    def __init__(self):
+        self._dev = None  # hid.device instance
+
+    def open(self) -> None:
+        import hid
+        self._dev = hid.device()
+        self._dev.open(SIFTEO_VID, SIFTEO_PID)
+        info = (self._dev.get_manufacturer_string() or "Sifteo")
+        product = (self._dev.get_product_string() or "Wireless Link")
+        print(f"Sifteo dongle opened (hidapi): {info} - {product}")
+
+    def close(self) -> None:
+        if self._dev is not None:
+            self._dev.close()
+            self._dev = None
+
+    def write(self, data: bytes) -> int:
+        # Prepend report ID 0x00; hidapi strips it before sending.
+        buf = b'\x00' + bytes(data)
+        return self._dev.write(buf)
+
+    def read(self, size: int, timeout_ms: int) -> Optional[bytes]:
+        data = self._dev.read(size, timeout_ms)
+        if data:
+            return bytes(data)
+        return None
+
+    @property
+    def is_open(self) -> bool:
+        return self._dev is not None
+
+
+class _PyUSBBackend(_DongleBackend):
+    """pyusb/libusb backend (requires root on macOS for kernel driver detach)."""
+
+    def __init__(self):
+        self._dev = None
+        self._ep_in = None
+        self._ep_out = None
+
+    def open(self) -> None:
+        import usb.core
+        import usb.util
+
+        dev = usb.core.find(idVendor=SIFTEO_VID, idProduct=SIFTEO_PID)
+        if dev is None:
+            raise DongleNotFoundError(
+                "No Sifteo dongle found. Make sure it's plugged in.\n"
+                f"Looking for USB device VID=0x{SIFTEO_VID:04X} PID=0x{SIFTEO_PID:04X}"
+            )
+
+        # Detach kernel HID driver (requires root on macOS)
+        try:
+            if dev.is_kernel_driver_active(0):
+                dev.detach_kernel_driver(0)
+        except usb.core.USBError as e:
+            raise DongleConnectionError(
+                f"Cannot detach kernel driver: {e}\n"
+                "On macOS, try running with sudo if the hidapi backend is unavailable."
+            ) from e
+
+        try:
+            usb.util.claim_interface(dev, 0)
+        except usb.core.USBError as e:
+            raise DongleConnectionError(
+                f"Cannot claim USB interface: {e}"
+            ) from e
+
+        cfg = dev.get_active_configuration()
+        intf = cfg[(0, 0)]
+        self._ep_in = usb.util.find_descriptor(
+            intf, custom_match=lambda e:
+            usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN
+        )
+        self._ep_out = usb.util.find_descriptor(
+            intf, custom_match=lambda e:
+            usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT
+        )
+        if not self._ep_in or not self._ep_out:
+            raise DongleConnectionError("Could not find IN/OUT endpoints")
+
+        self._dev = dev
+        print(f"Sifteo dongle opened (pyusb): {dev.product}")
+        print(f"  Manufacturer: {dev.manufacturer}")
+        print(f"  EP IN:  0x{self._ep_in.bEndpointAddress:02X} ({self._ep_in.wMaxPacketSize} bytes)")
+        print(f"  EP OUT: 0x{self._ep_out.bEndpointAddress:02X} ({self._ep_out.wMaxPacketSize} bytes)")
+
+    def close(self) -> None:
+        if self._dev is not None:
+            import usb.util
+            try:
+                usb.util.release_interface(self._dev, 0)
+            except Exception:
+                pass
+            try:
+                self._dev.attach_kernel_driver(0)
+            except Exception:
+                pass
+            self._dev = None
+            self._ep_in = None
+            self._ep_out = None
+
+    def write(self, data: bytes) -> int:
+        # Zero-pad to EP_OUT_SIZE (34 bytes) for raw USB interrupt transfer
+        padded = bytearray(EP_OUT_SIZE)
+        n = min(len(data), EP_OUT_SIZE)
+        padded[:n] = data[:n]
+        return self._ep_out.write(bytes(padded), timeout=1000)
+
+    def read(self, size: int, timeout_ms: int) -> Optional[bytes]:
+        import usb.core
+        try:
+            data = self._ep_in.read(size, timeout=timeout_ms)
+            if data:
+                return bytes(data)
+        except usb.core.USBTimeoutError:
+            pass
+        return None
+
+    @property
+    def is_open(self) -> bool:
+        return self._dev is not None
+
+
 def enumerate_dongles() -> list[dict]:
-    """List connected Sifteo dongles using hidapi (no root needed)."""
+    """List connected Sifteo dongles using hidapi (no root needed).
+
+    WARNING: On macOS, hidapi uses IOKit HID Manager which requires a
+    CFRunLoop and must only be called from the main thread. Use
+    enumerate_dongles_pyusb() for background threads.
+    """
     try:
         import hid
         return hid.enumerate(SIFTEO_VID, SIFTEO_PID)
@@ -70,6 +284,15 @@ def enumerate_dongles() -> list[dict]:
         pass
 
     # Fallback: pyusb
+    return enumerate_dongles_pyusb()
+
+
+def enumerate_dongles_pyusb() -> list[dict]:
+    """List connected Sifteo dongles using pyusb only (thread-safe).
+
+    Unlike enumerate_dongles(), this never calls hidapi and is safe to
+    call from any thread on macOS.
+    """
     try:
         import usb.core
         dev = usb.core.find(idVendor=SIFTEO_VID, idProduct=SIFTEO_PID)
@@ -86,7 +309,7 @@ class SifteoDongle:
     """Interface to the Sifteo V1 USB dongle.
 
     Uses pyusb/libusb for raw USB interrupt transfers, bypassing the
-    macOS HID driver that doesn't properly support writes to this device.
+    macOS HID driver that doesn't support writes to this device.
 
     Incoming packets are sorted into two queues based on the address byte:
     - address == 0xFF: dongle responses (to commands we sent)
@@ -98,17 +321,28 @@ class SifteoDongle:
     # command over radio to the cubes.
     WRITE_MIN_GAP = 0.025     # 25 ms
     WRITE_MAX_RETRIES = 2     # retry on timeout before giving up
+    WRITE_ACK_TIMEOUT = 5.0   # seconds waiting for dongle ACK
+    ENV_WRITE_MIN_GAP = "SIFTEO_WRITE_MIN_GAP"
+    ENV_WRITE_MAX_RETRIES = "SIFTEO_WRITE_MAX_RETRIES"
+    ENV_WRITE_ACK_TIMEOUT = "SIFTEO_WRITE_ACK_TIMEOUT"
 
     def __init__(self):
-        self._dev = None       # usb.core.Device
-        self._ep_in = None     # IN endpoint
-        self._ep_out = None    # OUT endpoint
+        self._backend: Optional[_DongleBackend] = None
         self._rx_thread: Optional[threading.Thread] = None
         self._running = False
         self._response_queue: queue.Queue = queue.Queue(5000)
         self._event_queue: queue.Queue = queue.Queue(5000)
         self._msg_id = 0
         self._last_write_time = 0.0
+        self._write_min_gap = _read_env_float(
+            self.ENV_WRITE_MIN_GAP, self.WRITE_MIN_GAP, minimum=0.0
+        )
+        self._write_max_retries = _read_env_int(
+            self.ENV_WRITE_MAX_RETRIES, self.WRITE_MAX_RETRIES, minimum=0
+        )
+        self._write_ack_timeout = _read_env_float(
+            self.ENV_WRITE_ACK_TIMEOUT, self.WRITE_ACK_TIMEOUT, minimum=0.0
+        )
 
     def _next_msg_id(self) -> int:
         """Get next message ID (0-255 incrementing counter)."""
@@ -136,132 +370,88 @@ class SifteoDongle:
             DongleNotFoundError: If no dongle is found.
             DongleConnectionError: If the dongle cannot be opened.
         """
-        import usb.core
-        import usb.util
-
-        if self._dev is not None:
+        if self._backend is not None:
             self.close()
 
-        dev = usb.core.find(idVendor=SIFTEO_VID, idProduct=SIFTEO_PID)
-        if dev is None:
-            raise DongleNotFoundError(
-                "No Sifteo dongle found. Make sure it's plugged in.\n"
-                f"Looking for USB device VID=0x{SIFTEO_VID:04X} PID=0x{SIFTEO_PID:04X}"
-            )
-
-        # Detach kernel HID driver (requires root on macOS)
-        try:
-            if dev.is_kernel_driver_active(0):
-                dev.detach_kernel_driver(0)
-        except usb.core.USBError as e:
-            raise DongleConnectionError(
-                f"Cannot detach kernel driver: {e}\n"
-                "On macOS, run with sudo: sudo python3 -m sifteo"
-            ) from e
-
-        # Claim the interface
-        try:
-            usb.util.claim_interface(dev, 0)
-        except usb.core.USBError as e:
-            raise DongleConnectionError(
-                f"Cannot claim USB interface: {e}\n"
-                "On macOS, run with sudo: sudo python3 -m sifteo"
-            ) from e
-
-        # Find endpoints
-        cfg = dev.get_active_configuration()
-        intf = cfg[(0, 0)]
-        self._ep_in = usb.util.find_descriptor(
-            intf, custom_match=lambda e:
-            usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN
-        )
-        self._ep_out = usb.util.find_descriptor(
-            intf, custom_match=lambda e:
-            usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT
-        )
-
-        if not self._ep_in or not self._ep_out:
-            raise DongleConnectionError("Could not find IN/OUT endpoints")
-
-        self._dev = dev
-        print(f"Sifteo dongle opened: {dev.product}")
-        print(f"  Manufacturer: {dev.manufacturer}")
-        print(f"  EP IN:  0x{self._ep_in.bEndpointAddress:02X} ({self._ep_in.wMaxPacketSize} bytes)")
-        print(f"  EP OUT: 0x{self._ep_out.bEndpointAddress:02X} ({self._ep_out.wMaxPacketSize} bytes)")
-
+        # Note: hidapi (IOHIDManager) does NOT work on macOS for this device --
+        # IOHIDDeviceSetReport times out on the interrupt OUT endpoint.
+        # pyusb with kernel driver detach (root) is required.
+        backend = _PyUSBBackend()
+        backend.open()
+        self._backend = backend
         self._start_rx()
 
     def close(self) -> None:
         """Close the dongle connection."""
         self._stop_rx()
-        if self._dev is not None:
-            import usb.util
-            try:
-                usb.util.release_interface(self._dev, 0)
-            except Exception:
-                pass
-            try:
-                self._dev.attach_kernel_driver(0)
-            except Exception:
-                pass
-            self._dev = None
-            self._ep_in = None
-            self._ep_out = None
+        if self._backend is not None:
+            self._backend.close()
+            self._backend = None
             print("Sifteo dongle closed.")
 
     @property
     def is_open(self) -> bool:
-        return self._dev is not None
+        return self._backend is not None and self._backend.is_open
 
     # -- Sending --
 
-    def send(self, msg: Message) -> None:
-        """Send a protocol Message. Assigns msg_id automatically."""
-        if self._dev is None:
+    def send(self, msg: Message, *,
+             wait_for_ack: bool = False,
+             ack_timeout: Optional[float] = None) -> Optional[bytes]:
+        """Send a protocol Message. Assigns msg_id automatically.
+
+        When wait_for_ack is enabled, blocks for the dongle's write ACK and
+        raises DongleWriteError if the ACK is missing or reports non-zero
+        status. Returns the raw ACK packet when wait_for_ack is True.
+        """
+        if not self.is_open:
             raise DongleConnectionError("Dongle not connected")
         msg.msg_id = self._next_msg_id()
         self._usb_write(msg.to_bytes())
+        if not wait_for_ack:
+            return None
+
+        timeout = self._write_ack_timeout if ack_timeout is None else max(0.0, ack_timeout)
+        raw = self.get_response_raw(timeout=timeout if timeout > 0 else None)
+        if raw is None:
+            raise DongleWriteError(
+                f"Timed out waiting for dongle ACK after write ({timeout:.3f}s)"
+            )
+        if len(raw) < 3:
+            raise DongleWriteError(f"Dongle ACK packet too short: {raw.hex()}")
+
+        status = raw[2]
+        if status != 0:
+            raise DongleWriteError(
+                f"Dongle rejected write (status={status}, raw={raw[:12].hex()})"
+            )
+        return raw
 
     def _usb_write(self, data: bytes) -> None:
-        """Write data via USB interrupt OUT transfer.
-
-        Copies the 33-byte message into a 34-byte buffer (zero-padded).
-        No HID report ID prefix — pyusb interrupt writes don't need one.
+        """Write a 33-byte protocol message via the active backend.
 
         Rate-limits writes so the dongle's nRF24LU1+ chip can keep up,
-        and retries on transient USB timeouts.
+        and retries on transient timeouts.
         """
-        import usb.core
-
         # Rate-limit: wait if we sent a write too recently
         now = time.time()
         gap = now - self._last_write_time
-        if gap < self.WRITE_MIN_GAP:
-            time.sleep(self.WRITE_MIN_GAP - gap)
-
-        padded = bytearray(EP_OUT_SIZE)
-        n = min(len(data), EP_OUT_SIZE)
-        padded[:n] = data[:n]
+        if gap < self._write_min_gap:
+            time.sleep(self._write_min_gap - gap)
 
         last_err = None
-        for attempt in range(1 + self.WRITE_MAX_RETRIES):
+        for attempt in range(1 + self._write_max_retries):
             try:
-                written = self._ep_out.write(bytes(padded), timeout=1000)
+                self._backend.write(data)
                 self._last_write_time = time.time()
-                if written != EP_OUT_SIZE:
-                    raise DongleWriteError(
-                        f"Short write: {written}/{EP_OUT_SIZE} bytes"
-                    )
                 return
-            except usb.core.USBTimeoutError as e:
+            except Exception as e:
                 last_err = e
                 # Back off before retrying
-                time.sleep(self.WRITE_MIN_GAP * (attempt + 1))
-            except usb.core.USBError as e:
-                raise DongleWriteError(f"Write failed: {e}") from e
+                time.sleep(self._write_min_gap * (attempt + 1))
 
         raise DongleWriteError(
-            f"Write timed out after {1 + self.WRITE_MAX_RETRIES} attempts"
+            f"Write failed after {1 + self._write_max_retries} attempts: {last_err}"
         )
 
     # -- Receiving --
@@ -467,26 +657,50 @@ class SifteoDongle:
         Incoming format: [radio_msg_len, address, opcode, payload...]
         address == 0xFF goes to response_queue, else to event_queue.
         """
-        import usb.core
-
         while self._running:
             if not self.is_open:
                 time.sleep(0.01)
                 continue
             try:
-                data = self._ep_in.read(EP_IN_SIZE, timeout=100)
+                data = self._backend.read(EP_IN_SIZE, timeout_ms=100)
                 if data and len(data) >= 3:
                     # Sort by address byte (index 1):
                     # 0xFF = dongle response, else = cube event
                     if data[1] == DONGLE_ADDRESS:
-                        self._response_queue.put(bytes(data))
+                        self._enqueue_rx_packet(self._response_queue, bytes(data))
                     else:
-                        self._event_queue.put(bytes(data))
-            except usb.core.USBTimeoutError:
-                pass
-            except usb.core.USBError:
+                        self._enqueue_rx_packet(self._event_queue, bytes(data))
+            except Exception:
                 if self._running:
                     time.sleep(0.01)
+
+    @staticmethod
+    def _enqueue_rx_packet(target_queue: queue.Queue, packet: bytes) -> None:
+        """Enqueue an RX packet without ever blocking the RX thread.
+
+        During large asset uploads the dongle can emit a high volume of
+        response/ACK packets. If a bounded queue fills up and `put()` blocks,
+        the RX thread stops draining USB IN, which can eventually cause OUT
+        writes to time out. To keep transport healthy, drop the oldest queued
+        packet on overflow and keep the newest traffic.
+        """
+        try:
+            target_queue.put_nowait(packet)
+            return
+        except queue.Full:
+            pass
+
+        try:
+            target_queue.get_nowait()
+        except queue.Empty:
+            return
+
+        try:
+            target_queue.put_nowait(packet)
+        except queue.Full:
+            # Another producer/consumer race can refill the queue in between.
+            # It's safe to drop this packet and continue receiving.
+            return
 
     # -- Context Manager --
 

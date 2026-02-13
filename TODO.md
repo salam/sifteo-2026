@@ -16,7 +16,7 @@
 
 ## Game Upload (Full .siftapp Support)
 
-- [x] **Understand the .siftapp format** - Investigated: `.siftapp` files are .NET DLLs loaded via `Assembly.LoadFrom()`, communicating over JSON-RPC TCP localhost:7000. The original Python runner used `manifest.json` per app directory. **Decision:** We do NOT support the .NET DLL format. Our Python `BaseApp` subclass is the replacement -- the class itself serves as the manifest with `APP_NAME`, `IMAGES`, and `SOUNDS` class attributes.
+- [x] **Understand the .siftapp format** - Investigated: `.siftapp` files are legacy bundled game packages tied to the original SiftRunner stack. In this project we now support **opaque `.siftapp` binary install** (uploading bundle bytes to cube flash with inferred app IDs), while full legacy runtime execution remains out of scope. Python `BaseApp` subclasses remain the native replacement for active game logic.
 
 - [x] **App registration on cubes** - `BaseApp` now supports declarative asset management: set `APP_NAME` (auto-generates 32-bit app_id via CRC32) or `APP_ID` (explicit), plus `IMAGES` and `SOUNDS` dicts mapping names to file paths. Assets are smart-synced to all cubes before `setup()` is called (only missing assets are uploaded). Use `self.app_id` and `self.asset_id("name")` in game code. See `src/sifteo/app.py` and `src/sifteo/assets.py`.
 
@@ -33,7 +33,7 @@
 
 - [ ] **Windows support** - Requires a WinUSB or libusb-win32 driver for the dongle. The original SiftRunner included `sifthid.dll` for Windows; we'd need the equivalent via `pyusb`.
 
-- [ ] **Remove root requirement on macOS** - Investigate using IOKit `IOHIDManager` with a codeless kext or DriverKit user-space driver to avoid needing `sudo`. Alternatively, a privileged helper tool installed once.
+- [ ] **Remove root requirement on macOS** - Investigated hidapi/IOHIDManager: `IOHIDDeviceSetReport` times out on this device's interrupt OUT endpoint (confirmed via diagnostic test). pyusb with kernel driver detach (root) is still required. Dongle.py now has a backend abstraction (`_DongleBackend`/`_PyUSBBackend`/`_HidapiBackend`) ready for future approaches: privileged helper tool, codeless kext, or DriverKit user-space driver.
 
 ## Library Improvements
 

@@ -2,20 +2,29 @@
 
 Open-source host software for [Sifteo V1 Cubes](https://en.wikipedia.org/wiki/Sifteo_cubes) on modern macOS (Apple Silicon).
 
+![Re-implemented version of the Sifteo Sync app](./Screenshot%20Sifteo-GUI.png)
+*Re-implemented version of the Sifteo Sync app*
+
 Replaces the original 32-bit Intel SiftRunner application that no longer runs on current macOS versions. Communicates directly with the Sifteo USB dongle via `pyusb`/`libusb`, driving the cubes' 128x128 LCD displays, reading accelerometer tilt, button presses, shake gestures, and neighbor detection - all from Python.
 
-![Sifteo 2026 logo](./sifteo-v1.jpg)
+![Photo of the original Sifteo Cubes, generation 1, controlled through a USB-connected dongle](./sifteo-v1.jpg)
+*Photo of the original Sifteo Cubes, generation 1, controlled through a USB-connected dongle*
 
-## Demo
+## Quick Start (GUI)
 
+The graphical Cube Manager lets you connect to the dongle, browse all 23 bundled legacy games, install `.siftapp` bundles onto cubes, and tune upload settings -- all from a single window.
+
+```bash
+# Install with GUI support
+pip install -e '.[gui]'
+
+# Launch the Cube Manager
+sudo python3 -m sifteo gui
 ```
-$ sudo python3 -m sifteo demo
-Sifteo dongle opened: Sifteo Wireless Link
-  Found 3 cube(s): [1, 2, 3]
-Running color demo. Press Ctrl+C to stop.
-```
 
-## Quick Start
+The GUI auto-detects the dongle, discovers cubes, and offers a one-click "Relaunch as root" button if you forget `sudo`. Upload speed can be adjusted live from the settings panel.
+
+## Quick Start (Command Line)
 
 ```bash
 # Install dependencies
@@ -30,6 +39,33 @@ python3 -m sifteo detect
 # Run the color demo (requires root for USB access)
 sudo python3 -m sifteo demo
 
+# Install a legacy .siftapp bundle onto connected cube(s)
+sudo python3 -m sifteo install-siftapp sifteo-gen1-redux/payload/Siftapps/siftsays.siftapp
+
+# Optional: payload extraction mode from the .siftapp container.
+# auto (default) tries full container bytes + 16-byte-header-stripped body bytes.
+sudo python3 -m sifteo install-siftapp path/to/app.siftapp --payload-shape auto
+
+# Optional: use header-derived app IDs (legacy-style). Default uses
+# crc32(filename) to avoid ID collisions between archived bundles.
+sudo python3 -m sifteo install-siftapp path/to/app.siftapp --prefer-header-app-id
+
+# Or use the helper by short app name + cube target
+# ("all" => all detected cubes)
+./examples/install_app.py siftsays 0
+
+# Verify transport using known legacy .siftimg fixtures (cube-side CRC checks)
+SIFTEO_WRITE_MIN_GAP=0.001 SIFTEO_WRITE_MAX_RETRIES=5 \
+PYTHONPATH=src sudo /opt/homebrew/bin/python3.9 \
+examples/verify_fixture_upload.py --cube-id 0 --quick --delete-first
+
+# Optional stronger transport proof: CRC + download byte-for-byte roundtrip
+PYTHONPATH=src sudo /opt/homebrew/bin/python3.9 \
+examples/verify_fixture_upload.py --cube-id 0 --quick --roundtrip
+
+# Inspect .siftapp container structure for reverse engineering
+python3 examples/analyze_siftapp.py --scan-crypto
+
 # Run the interactive probe tool
 sudo python3 probe_dongle.py
 
@@ -37,7 +73,34 @@ sudo python3 probe_dongle.py
 sudo python3 examples/hello_world.py
 ```
 
-Root access is required on macOS because the kernel HID driver must be detached to get raw USB interrupt transfer access to the dongle.
+Root access is required on macOS because the kernel HID driver must be detached to get raw USB interrupt transfer access to the dongle. (IOHIDManager's `IOHIDDeviceSetReport` does not work for this device's interrupt OUT endpoint.)
+
+`.siftapp` support uploads preserved legacy bundle binaries as opaque app payloads to cube flash. Running legacy .NET game logic is still outside the Python runtime.
+By default, the installer auto-tries both raw payload bytes and an appended trailing CRC footer (`--payload-crc auto`), and both container/body payload extraction modes (`--payload-shape auto`).
+
+### Upload Speed Tuning
+
+Asset upload throughput is mostly limited by the USB inter-packet gap (`WRITE_MIN_GAP`).
+Default is conservative (`0.025s`) for stability.
+Uploads now use per-packet dongle ACKs (matching legacy SiftRunner behavior)
+to avoid packet drops that can cause flash misalignment failures.
+
+To speed up uploads, lower the gap via environment variable or via the GUI settings panel:
+
+```bash
+# ~5x faster than default on many setups; raise again if unstable
+sudo SIFTEO_WRITE_MIN_GAP=0.005 python3 -m sifteo install-siftapp path/to/app.siftapp --cube-id 0
+
+# Works with helper script too
+SIFTEO_WRITE_MIN_GAP=0.005 ./examples/install_app.py siftsays 0
+```
+
+Optional retry tuning:
+
+```bash
+SIFTEO_WRITE_MAX_RETRIES=5
+SIFTEO_WRITE_ACK_TIMEOUT=5.0
+```
 
 ## Writing Games
 
@@ -73,7 +136,7 @@ See [examples/hello_world.py](examples/hello_world.py) for a complete example wi
 
 ## Event support
 
-`sudo python3.9 -m sifteo demo` will detect events and recognize context of the cubes.
+`sudo python3 -m sifteo demo` will detect events and recognize context of the cubes.
 
 ```bash
   ShakeEvent(cube=2)
@@ -126,13 +189,18 @@ The approach to recreate a working controller was:
 
 ```
 src/sifteo/          Modern Python library
-  __main__.py        CLI entry point (detect / run / demo)
+  __main__.py        CLI entry point (detect / gui / run / demo / install-siftapp)
   app.py             BaseApp - subclass this for games
   runner.py          Event loop, cube lifecycle, neighbor sync
-  dongle.py          USB dongle communication (pyusb)
+  dongle.py          USB dongle communication (pyusb, backend abstraction)
   protocol.py        Opcodes, message format, command builders
   cube.py            Per-cube state, events, display API
   detect.py          Dongle detection and diagnostics
+  gui/               Graphical Cube Manager (pywebview)
+    app.py           Window setup and lifecycle
+    bridge.py        Python<->JS bridge (dongle, install, settings)
+    catalog.py       Game metadata for 23 bundled .siftapp titles
+    web/             HTML/CSS/JS frontend
 
 probe_dongle.py      Interactive protocol probe & test tool
 examples/            Example games
@@ -147,6 +215,7 @@ PROTOCOL.md          Complete protocol documentation
 - Python 3.9+
 - `libusb` (install via `brew install libusb`)
 - `pyusb` >= 1.2
+- `pywebview` >= 5.0 (optional, for the GUI -- install with `pip install -e '.[gui]'`)
 - A Sifteo V1 USB dongle and one or more V1 cubes
 
 ## Acknowledgments
@@ -157,7 +226,7 @@ This project would not have been possible without the work of several people and
 
 - **[@dannyow](https://github.com/dannyow)** - For [sifteo-gen1-redux](https://github.com/dannyow/sifteo-gen1-redux), the community effort to preserve and rebuild the Sifteo V1 ecosystem. The packaged SiftRunner installer and collected game apps were the starting point for this project.
 
-- **[Dr. Mike Reddy]**  - For his blog post [Sifteo: Resurrecting a Legend](http://doctormikereddy.com/sifteo-resurrecting-a-legend/), which documented the effort to locate original Sifteo apps and binaries, and for his extensive work preserving Sifteo's history.
+- **Dr. Mike Reddy**  - For his blog post [Sifteo: Resurrecting a Legend](http://doctormikereddy.com/sifteo-resurrecting-a-legend/), which documented the effort to locate original Sifteo apps and binaries, and for his extensive work preserving Sifteo's history.
 
 - **[pyusb](https://github.com/pyusb/pyusb)** contributors - For the Python USB library that made direct dongle communication on modern macOS possible without writing a kernel extension.
 

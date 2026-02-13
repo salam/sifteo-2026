@@ -15,6 +15,9 @@ Usage:
     # Upload a pre-compiled .siftimg file:
     sudo python3 examples/asset_upload.py walk.siftimg
 
+    # Install a legacy .siftapp bundle (opaque payload upload):
+    sudo python3 examples/asset_upload.py siftsays.siftapp
+
     # With a custom app/asset ID:
     sudo python3 examples/asset_upload.py logo.png --app-id 42 --asset-id 1
 
@@ -43,6 +46,9 @@ IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.webp'}
 
 # Sound file extensions that should be encoded to float32
 SOUND_EXTENSIONS = {'.wav'}
+
+# Legacy Sifteo app bundle extension
+SIFTAPP_EXTENSIONS = {'.siftapp'}
 
 
 def progress_bar(sent: int, total: int):
@@ -83,7 +89,7 @@ class AssetUploadDemo(BaseApp):
         self.runner.stop()
 
     def _list_assets(self, cube: Cube, assets: AssetManager):
-        app_id = self.args.app_id
+        app_id = 0 if self.args.app_id is None else self.args.app_id
 
         print(f"\n--- App list for cube {cube.id} ---")
         app_ids = assets.query_app_list(cube.id)
@@ -122,7 +128,7 @@ class AssetUploadDemo(BaseApp):
         print(f"  Saved to {output}")
 
     def _delete_all(self, cube: Cube, assets: AssetManager):
-        app_id = self.args.app_id
+        app_id = 0 if self.args.app_id is None else self.args.app_id
         print(f"Deleting all assets for app {app_id} on cube {cube.id}...")
         if assets.delete_all_assets(cube.id, app_id):
             print("Done.")
@@ -131,48 +137,76 @@ class AssetUploadDemo(BaseApp):
 
     def _upload_file(self, cube: Cube, assets: AssetManager):
         file_path = self.args.file
-        app_id = self.args.app_id
+        app_id_opt = self.args.app_id
         asset_id = self.args.asset_id
         ext = os.path.splitext(file_path)[1].lower()
+        is_siftapp = self.args.siftapp or ext in SIFTAPP_EXTENSIONS
 
-        # Auto-detect asset type from extension (--sound flag overrides)
-        is_sound = self.args.sound or ext in SOUND_EXTENSIONS
-        asset_type = ASSET_TYPE_SOUND if is_sound else ASSET_TYPE_IMAGE
-
-        type_name = "sound" if is_sound else "image"
-        print(f"\nUploading {type_name}: {file_path}")
-        print(f"  App ID: {app_id}, Asset ID: {asset_id}")
-        print(f"  File size: {os.path.getsize(file_path)} bytes")
-
-        if ext in SOUND_EXTENSIONS:
-            print(f"  Encoding: {ext} -> float32 22050Hz mono")
-            data = encode_sound(file_path)
-            print(f"  Encoded size: {len(data)} bytes (including 4-byte CRC)")
-        elif ext in IMAGE_EXTENSIONS:
-            w = self.args.width
-            h = self.args.height
-            print(f"  Encoding: {ext} -> RGB332 ({w}x{h})")
-            data = encode_image(file_path, w, h)
-            print(f"  Encoded size: {len(data)} bytes (including 4-byte CRC)")
-        else:
-            print(f"  Format: raw ({ext or 'binary'})")
-            data = read_siftimg(file_path)
-
-        print()
-
-        try:
-            ok = assets.upload_bytes(
-                cube.id, app_id, asset_id, data,
-                asset_type=asset_type, progress=progress_bar,
-            )
-            if ok:
-                print(f"Upload complete!")
+        if is_siftapp:
+            print(f"\nInstalling .siftapp: {file_path}")
+            if app_id_opt is None:
+                print("  App ID: infer from package header (fallback: CRC32 filename)")
             else:
-                print("Upload returned False.")
+                print(f"  App ID: {app_id_opt} (explicit)")
+            print(f"  Asset ID: {asset_id}")
+            print(f"  File size: {os.path.getsize(file_path)} bytes")
+            print()
+
+            try:
+                install = assets.install_siftapp(
+                    cube.id, file_path, app_id=app_id_opt, asset_id=asset_id,
+                    progress=progress_bar,
+                )
+            except Exception as e:
+                print(f"Install failed: {e}")
                 return
-        except Exception as e:
-            print(f"Upload failed: {e}")
-            return
+
+            app_id = install.app_id
+            asset_type = ASSET_TYPE_IMAGE
+            print("Install complete!")
+            print(f"  Stored as app_id={install.app_id} asset_id={install.asset_id}")
+            print(f"  Uploaded bytes={install.bytes_uploaded}")
+            print(f"  App ID source={install.app_id_source}")
+        else:
+            # Auto-detect asset type from extension (--sound flag overrides)
+            is_sound = self.args.sound or ext in SOUND_EXTENSIONS
+            asset_type = ASSET_TYPE_SOUND if is_sound else ASSET_TYPE_IMAGE
+            app_id = 0 if app_id_opt is None else app_id_opt
+
+            type_name = "sound" if is_sound else "image"
+            print(f"\nUploading {type_name}: {file_path}")
+            print(f"  App ID: {app_id}, Asset ID: {asset_id}")
+            print(f"  File size: {os.path.getsize(file_path)} bytes")
+
+            if ext in SOUND_EXTENSIONS:
+                print(f"  Encoding: {ext} -> float32 22050Hz mono")
+                data = encode_sound(file_path)
+                print(f"  Encoded size: {len(data)} bytes (including 4-byte CRC)")
+            elif ext in IMAGE_EXTENSIONS:
+                w = self.args.width
+                h = self.args.height
+                print(f"  Encoding: {ext} -> RGB332 ({w}x{h})")
+                data = encode_image(file_path, w, h)
+                print(f"  Encoded size: {len(data)} bytes (including 4-byte CRC)")
+            else:
+                print(f"  Format: raw ({ext or 'binary'})")
+                data = read_siftimg(file_path)
+
+            print()
+
+            try:
+                ok = assets.upload_bytes(
+                    cube.id, app_id, asset_id, data,
+                    asset_type=asset_type, progress=progress_bar,
+                )
+                if ok:
+                    print("Upload complete!")
+                else:
+                    print("Upload returned False.")
+                    return
+            except Exception as e:
+                print(f"Upload failed: {e}")
+                return
 
         # Verify CRC
         if self.args.verify:
@@ -186,8 +220,8 @@ class AssetUploadDemo(BaseApp):
             else:
                 print("  CRC verification timed out.")
 
-        # Display the image on the cube
-        if asset_type == ASSET_TYPE_IMAGE and self.args.display:
+        # Display only for normal image uploads
+        if not is_siftapp and asset_type == ASSET_TYPE_IMAGE and self.args.display:
             print(f"Displaying asset on cube {cube.id}...")
             cube.image(app_id, asset_id)
             cube.repaint()
@@ -196,8 +230,9 @@ class AssetUploadDemo(BaseApp):
 def main():
     parser = argparse.ArgumentParser(description="Sifteo V1 Asset Upload Tool")
     parser.add_argument("file", nargs="?", help="Asset file to upload")
-    parser.add_argument("--app-id", type=int, default=0,
-                        help="Application ID (default: 0)")
+    parser.add_argument("--app-id", type=int, default=None,
+                        help="Application ID (default: 0 for regular assets; "
+                             "auto-infer for .siftapp)")
     parser.add_argument("--asset-id", type=int, default=0,
                         help="Asset ID (default: 0)")
     parser.add_argument("--width", type=int, default=128,
@@ -206,6 +241,8 @@ def main():
                         help="Image height for PNG/BMP encoding (default: 128)")
     parser.add_argument("--sound", action="store_true",
                         help="Upload as sound asset (default: image)")
+    parser.add_argument("--siftapp", action="store_true",
+                        help="Treat input file as a legacy .siftapp package")
     parser.add_argument("--verify", action="store_true", default=True,
                         help="Verify CRC after upload (default: True)")
     parser.add_argument("--no-verify", action="store_false", dest="verify",

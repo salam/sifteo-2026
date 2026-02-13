@@ -44,7 +44,8 @@ USB format: [radio_msg_length, usb_msg_id, address, opcode, payload...]
   Address 0xFF = dongle, 0-15 = cube addresses
   Side indices: 0=up, 1=left, 2=down, 3=right
 
-Usage: sudo python3.9 probe_dongle.py
+Usage: python3 probe_dongle.py
+       (may require sudo -- this standalone tool uses raw pyusb, not the hidapi backend)
 """
 
 import sys

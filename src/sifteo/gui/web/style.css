@@ -1,0 +1,829 @@
+/* Sifteo Cube Manager -- Dark theme, minimal CSS */
+
+:root {
+    --bg: #111114;
+    --bg-raised: #1a1a1f;
+    --bg-card: #22222a;
+    --bg-hover: #2a2a34;
+    --border: #2e2e38;
+    --text: #e8e8ec;
+    --text-dim: #8888a0;
+    --accent: #6c8cff;
+    --accent-hover: #8aa4ff;
+    --success: #4ccc6a;
+    --error: #e85454;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    overflow-x: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* ── Top bar ──────────────────────────────────────────────── */
+
+#topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 44px;
+    padding: 0 16px;
+    background: var(--bg-raised);
+    border-bottom: 1px solid var(--border);
+    -webkit-app-region: drag;
+}
+
+.topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.logo { color: var(--accent); }
+
+.app-title {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-dim);
+    -webkit-app-region: no-drag;
+}
+
+.dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.dot-offline { background: var(--text-dim); }
+.dot-online  { background: var(--success); }
+.dot-dongle  { background: #f0c040; }
+
+.dot-online.traffic {
+    animation: dot-pulse 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes dot-pulse {
+    from { background: var(--success); }
+    to   { background: #fff; }
+}
+
+/* ── Settings gear button ─────────────────────────────────── */
+
+.btn-icon {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, background 0.15s;
+    -webkit-app-region: no-drag;
+}
+
+.btn-icon:hover {
+    color: var(--text);
+    background: var(--bg-hover);
+}
+
+.btn-icon.active {
+    color: var(--accent);
+}
+
+/* ── Settings panel ──────────────────────────────────────── */
+
+.settings-panel {
+    background: var(--bg-raised);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+}
+
+.settings-group {
+    min-width: 240px;
+    flex: 1;
+    max-width: 360px;
+}
+
+.settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.settings-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+}
+
+.settings-value {
+    font-size: 12px;
+    color: var(--accent);
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+}
+
+.settings-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.settings-hint {
+    font-size: 11px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+    width: 32px;
+}
+
+.settings-slider-row .settings-hint:last-child {
+    text-align: right;
+}
+
+.settings-slider {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+}
+
+.settings-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid var(--bg-raised);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+
+.settings-slider::-webkit-slider-thumb:hover {
+    background: var(--accent-hover);
+}
+
+.settings-desc {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 6px;
+    line-height: 1.4;
+}
+
+/* ── Screens ──────────────────────────────────────────────── */
+
+.screen {
+    padding: 24px;
+    overflow-y: auto;
+}
+
+/* ── Landing ──────────────────────────────────────────────── */
+
+.landing-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 16px;
+    text-align: center;
+}
+
+.dongle-icon {
+    color: var(--text-dim);
+    opacity: 0.5;
+    transition: opacity 0.3s, color 0.3s;
+}
+
+.dongle-icon.found {
+    color: var(--accent);
+    opacity: 1;
+}
+
+.landing-msg {
+    font-size: 15px;
+    color: var(--text-dim);
+}
+
+.root-hint {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.root-hint p {
+    font-size: 13px;
+    color: var(--text-dim);
+}
+
+.copy-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+}
+
+.copy-box code {
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+    font-size: 13px;
+    color: var(--text);
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.error-msg {
+    font-size: 13px;
+    color: var(--error);
+    padding: 8px 14px;
+    background: rgba(232, 84, 84, 0.1);
+    border-radius: var(--radius-sm);
+    max-width: 400px;
+}
+
+/* ── Buttons ──────────────────────────────────────────────── */
+
+.btn {
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+    -webkit-app-region: no-drag;
+}
+
+.btn:active { opacity: 0.8; }
+
+.btn-primary {
+    background: var(--accent);
+    color: #fff;
+    padding: 10px 28px;
+    font-size: 14px;
+}
+
+.btn-primary:hover { background: var(--accent-hover); }
+
+.btn-secondary {
+    background: var(--bg-card);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 8px 18px;
+}
+
+.btn-secondary:hover { background: var(--bg-hover); }
+
+.btn-small {
+    padding: 4px 10px;
+    font-size: 12px;
+    background: var(--bg-hover);
+    color: var(--text-dim);
+}
+
+.btn-small:hover { color: var(--text); }
+
+.btn-ghost {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+}
+
+.btn-ghost:hover {
+    background: var(--bg-card);
+    color: var(--text);
+}
+
+/* ── Dashboard ────────────────────────────────────────────── */
+
+.dashboard-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.dashboard-header h2 {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.dashboard-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-dim);
+}
+
+.dashboard-controls select {
+    background: var(--bg-card);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 4px 8px;
+    font-size: 12px;
+    font-family: var(--font);
+    cursor: pointer;
+}
+
+/* ── Game Grid ────────────────────────────────────────────── */
+
+.game-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+}
+
+.game-card {
+    position: relative;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.game-card:hover {
+    border-color: var(--accent);
+    background: var(--bg-hover);
+}
+
+.game-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    flex-shrink: 0;
+}
+
+.game-name {
+    font-size: 13px;
+    font-weight: 500;
+    text-align: center;
+    line-height: 1.3;
+    min-height: 34px;
+    display: flex;
+    align-items: center;
+}
+
+.game-category {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.game-action {
+    width: 100%;
+    margin-top: auto;
+}
+
+.btn-install {
+    width: 100%;
+    padding: 6px 0;
+    background: var(--bg-hover);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: var(--font);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.btn-install:hover {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+
+.btn-install:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Info button (i) */
+.btn-info {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 600;
+    font-style: italic;
+    font-family: Georgia, "Times New Roman", serif;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+    z-index: 15;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.btn-info:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+/* Info overlay on game card */
+.game-info-overlay {
+    position: absolute;
+    inset: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+    padding: 14px;
+    z-index: 10;
+    cursor: default;
+}
+
+.info-desc {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.4;
+    flex: 1;
+}
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    padding: 3px 0;
+    border-top: 1px solid var(--border);
+}
+
+.info-label {
+    color: var(--text-dim);
+}
+
+.info-value {
+    color: var(--text);
+}
+
+.info-value.installed {
+    color: var(--success);
+}
+
+/* Progress bar replaces install button */
+.progress-wrap {
+    width: 100%;
+    height: 28px;
+    background: var(--bg);
+    border-radius: var(--radius-sm);
+    overflow: visible;
+    position: relative;
+}
+
+.progress-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    transition: width 0.2s ease;
+}
+
+.progress-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+
+.progress-cube-badge {
+    position: absolute;
+    top: -8px;
+    right: -6px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 8px;
+    line-height: 14px;
+    letter-spacing: 0.02em;
+    border: 1.5px solid var(--bg-card);
+    white-space: nowrap;
+}
+
+/* Done / error states */
+.install-done {
+    width: 100%;
+    text-align: center;
+    font-size: 12px;
+    padding: 6px 0;
+    border-radius: var(--radius-sm);
+}
+
+.install-done.success {
+    color: var(--success);
+    background: rgba(76, 204, 106, 0.1);
+}
+
+.install-done.error {
+    color: var(--error);
+    background: rgba(232, 84, 84, 0.1);
+}
+
+/* ── Cube bar ─────────────────────────────────────────────── */
+
+.cube-bar {
+    position: fixed;
+    bottom: 32px;
+    left: 0;
+    right: 0;
+    background: var(--bg-raised);
+    border-top: 1px solid var(--border);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 12px;
+    z-index: 50;
+}
+
+.cube-bar-label {
+    color: var(--text-dim);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 11px;
+}
+
+.cube-list {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.cube-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text);
+}
+
+.cube-item .dot { width: 6px; height: 6px; }
+
+.cube-fw {
+    color: var(--text-dim);
+}
+
+/* ── Console panel ────────────────────────────────────────── */
+
+.console-panel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--bg-raised);
+    border-top: 1px solid var(--border);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    transition: height 0.2s ease;
+    height: 200px;
+}
+
+.console-panel.collapsed {
+    height: 32px;
+}
+
+.console-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 12px;
+    height: 32px;
+    min-height: 32px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.console-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+}
+
+.console-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.console-log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 12px;
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+    font-size: 11px;
+    line-height: 1.6;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.console-panel.collapsed .console-log {
+    display: none;
+}
+
+.log-entry {
+    display: flex;
+    gap: 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.log-time {
+    color: var(--text-dim);
+    flex-shrink: 0;
+}
+
+.log-level {
+    flex-shrink: 0;
+    width: 40px;
+    text-align: right;
+}
+
+.log-level.info  { color: var(--accent); }
+.log-level.warn  { color: #f0c040; }
+.log-level.error { color: var(--error); }
+.log-level.ok    { color: var(--success); }
+
+.log-msg {
+    color: var(--text);
+}
+
+/* Adjust screens for console panel */
+.screen {
+    padding-bottom: 40px;
+}
+
+#dashboard .game-grid {
+    padding-bottom: 40px;
+}
+
+/* When console is expanded, add more bottom padding */
+body.console-open .screen {
+    padding-bottom: 208px;
+}
+
+body.console-open #dashboard .game-grid {
+    padding-bottom: 208px;
+}
+
+body.console-open .cube-bar {
+    bottom: 200px;
+}
+
+/* ── Cube popup ───────────────────────────────────────────── */
+
+.cube-item.clickable {
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    padding: 2px 6px;
+    margin: -2px -6px;
+    transition: background 0.15s;
+}
+
+.cube-item.clickable:hover {
+    background: var(--bg-hover);
+}
+
+.cube-popup {
+    position: fixed;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    min-width: 220px;
+    max-width: 280px;
+    z-index: 200;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.cube-popup-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--text);
+}
+
+.cube-popup-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    font-size: 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.cube-popup-row:last-child {
+    border-bottom: none;
+}
+
+.cube-popup-label {
+    color: var(--text-dim);
+}
+
+.cube-popup-value {
+    color: var(--text);
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+    font-size: 11px;
+}
+
+.cube-popup-section {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+    margin-top: 10px;
+    margin-bottom: 6px;
+}
+
+.cube-popup-apps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.cube-popup-app-tag {
+    font-size: 11px;
+    background: rgba(108, 140, 255, 0.15);
+    color: var(--accent);
+    padding: 2px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+}
+
+.cube-popup-none {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-style: italic;
+}
+
+/* ── Scrollbar ────────────────────────────────────────────── */
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
