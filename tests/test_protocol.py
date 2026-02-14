@@ -7,7 +7,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from sifteo.protocol import (
-    Op, Message, USB_MSG_LEN, DONGLE_ADDRESS,
+    Op, Message, USB_MSG_LEN, USB_OUT_MSG_LEN, DONGLE_ADDRESS,
     pack_u8, pack_u16, pack_u32, unpack_u8, unpack_u16, unpack_u32,
     rgb_to_rgb332, rgb332_to_rgb,
     cmd_fill_screen, cmd_draw_rect, cmd_repaint, cmd_blit_image,
@@ -25,7 +25,7 @@ class TestMessageToBytes:
     def test_length_is_usb_msg_len(self):
         msg = Message(Op.GRAPHICS_FILL, 1, b"\xE0")
         data = msg.to_bytes()
-        assert len(data) == USB_MSG_LEN
+        assert len(data) == USB_OUT_MSG_LEN
 
     def test_zero_padded(self):
         msg = Message(Op.GRAPHICS_FILL, 1, b"\xE0")

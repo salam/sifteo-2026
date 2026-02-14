@@ -228,8 +228,15 @@ class _PyUSBBackend(_DongleBackend):
             raise DongleConnectionError("Could not find IN/OUT endpoints")
 
         self._dev = dev
-        print(f"Sifteo dongle opened (pyusb): {dev.product}")
-        print(f"  Manufacturer: {dev.manufacturer}")
+        try:
+            product = dev.product or "unknown"
+            manufacturer = dev.manufacturer or "unknown"
+        except (ValueError, usb.core.USBError):
+            # "The device has no langid" -- string descriptors unavailable
+            product = "Sifteo Wireless Link"
+            manufacturer = "Sifteo"
+        print(f"Sifteo dongle opened (pyusb): {product}")
+        print(f"  Manufacturer: {manufacturer}")
         print(f"  EP IN:  0x{self._ep_in.bEndpointAddress:02X} ({self._ep_in.wMaxPacketSize} bytes)")
         print(f"  EP OUT: 0x{self._ep_out.bEndpointAddress:02X} ({self._ep_out.wMaxPacketSize} bytes)")
 
@@ -321,7 +328,7 @@ class SifteoDongle:
     # command over radio to the cubes.
     WRITE_MIN_GAP = 0.025     # 25 ms
     WRITE_MAX_RETRIES = 2     # retry on timeout before giving up
-    WRITE_ACK_TIMEOUT = 5.0   # seconds waiting for dongle ACK
+    WRITE_ACK_TIMEOUT = 20.0  # seconds waiting for dongle ACK (matches original)
     ENV_WRITE_MIN_GAP = "SIFTEO_WRITE_MIN_GAP"
     ENV_WRITE_MAX_RETRIES = "SIFTEO_WRITE_MAX_RETRIES"
     ENV_WRITE_ACK_TIMEOUT = "SIFTEO_WRITE_ACK_TIMEOUT"

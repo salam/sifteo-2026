@@ -17,7 +17,13 @@ let state = {
     installed_apps: {},  // game_name -> [cube_ids]
     consoleOpen: false,
     settingsOpen: false,
+    filterCategory: "all",
+    sortBy: "alpha",
+    activeTab: "games",
+    observerShakes: {},   // cube_id -> timestamp (ms)
 };
+
+let _observerInterval = null;
 
 let _trafficTimer = null;
 
@@ -217,12 +223,40 @@ window.onSifteoEvent = function(event) {
 
     if (type === "status_update") {
         updateStatus(data);
+
+        // Track shake events and log neighbor changes for observer
+        if (data.cubes) {
+            for (const c of data.cubes) {
+                // Log neighbor state changes for debugging
+                if (c.neighbors) {
+                    const SIDE_NAMES = ["top", "left", "bottom", "right"];
+                    for (let s = 0; s < 4; s++) {
+                        const n = c.neighbors[s];
+                        const prev = state.cubes.find(p => p.id === c.id);
+                        const prevN = prev && prev.neighbors ? prev.neighbors[s] : null;
+                        const nKey = n ? n.cube + ":" + n.side : null;
+                        const prevKey = prevN ? prevN.cube + ":" + prevN.side : null;
+                        if (nKey !== prevKey && n) {
+                            consoleLog("info", "Neighbor: cube " + c.id + " " + SIDE_NAMES[s] + " (side " + s + ") -> cube " + n.cube);
+                        }
+                    }
+                }
+                if (c.last_event && c.last_event.type === "shake") {
+                    const evTime = c.last_event.time * 1000; // seconds -> ms
+                    if (Date.now() - evTime < 1500) {
+                        state.observerShakes[c.id] = evTime;
+                    }
+                }
+            }
+        }
+
         if (data.connected && !state.connected) {
             state.connected = true;
             consoleLog("ok", "Connected with " + (data.cubes || []).length + " cube(s)");
             showDashboard();
         } else if (!data.connected && state.connected) {
             state.connected = false;
+            stopObserverLoop();
             consoleLog("warn", "Disconnected");
             showLanding();
         } else if (!data.connected) {
@@ -377,20 +411,368 @@ function showDashboard() {
     document.getElementById("landing").style.display = "none";
     document.getElementById("dashboard").style.display = "";
 
+    renderFilterDropdown();
+    renderSortButtons();
     renderGameGrid();
     renderCubeBar(state.cubes);
     updateCubeSelect(state.cubes);
     scanInstalledApps();
+    switchTab(state.activeTab);
+}
+
+// ── Tab switching ────────────────────────────────────────────────
+
+function switchTab(tab) {
+    state.activeTab = tab;
+
+    document.getElementById("tab-games").classList.toggle("active", tab === "games");
+    document.getElementById("tab-observer").classList.toggle("active", tab === "observer");
+    document.getElementById("tab-content-games").style.display = tab === "games" ? "" : "none";
+    document.getElementById("tab-content-observer").style.display = tab === "observer" ? "" : "none";
+
+    if (tab === "observer") {
+        startObserverLoop();
+    } else {
+        stopObserverLoop();
+    }
+}
+
+function startObserverLoop() {
+    stopObserverLoop();
+    renderObserver();
+    _observerInterval = setInterval(renderObserver, 250);
+}
+
+function stopObserverLoop() {
+    if (_observerInterval) {
+        clearInterval(_observerInterval);
+        _observerInterval = null;
+    }
+}
+
+// ── Observer rendering ──────────────────────────────────────────
+
+function renderObserver() {
+    const area = document.getElementById("observer-area");
+    if (!area) return;
+
+    const cubes = state.cubes;
+    if (!cubes || cubes.length === 0) {
+        clearChildren(area);
+        area.appendChild(el("div", { className: "observer-empty" }, "No cubes connected"));
+        return;
+    }
+
+    // Partition cubes into docked and free
+    const dockedCubes = cubes.filter(c => c.docked);
+    const freeCubes = cubes.filter(c => !c.docked);
+
+    clearChildren(area);
+
+    // Render free cubes with neighbor layout
+    if (freeCubes.length > 0) {
+        const layout = computeObserverLayout(freeCubes);
+        area.appendChild(renderFreeCubes(freeCubes, layout));
+    }
+
+    // Render dock station if any cubes are docked
+    if (dockedCubes.length > 0) {
+        area.appendChild(renderDockStation(dockedCubes));
+    }
+
+    // If no free cubes and no docked cubes rendered a special case
+    if (freeCubes.length === 0 && dockedCubes.length === 0) {
+        area.appendChild(el("div", { className: "observer-empty" }, "All cubes offline"));
+    }
+}
+
+function computeObserverLayout(freeCubes) {
+    // Build a quick lookup by cube ID
+    const cubeMap = new Map();
+    for (const c of freeCubes) cubeMap.set(c.id, c);
+
+    // Side-to-delta: 0=top, 1=left, 2=bottom, 3=right
+    // (matches Sifteo SDK: Cube.Side enum / SIDE_NAMES)
+    const sideDelta = [
+        [0, -1],  // top    -> neighbor is above
+        [-1, 0],  // left   -> neighbor is to the left
+        [0,  1],  // bottom -> neighbor is below
+        [1,  0],  // right  -> neighbor is to the right
+    ];
+
+    const positions = new Map();  // cube_id -> {gx, gy}
+    const visited = new Set();
+
+    // BFS from each unvisited cube
+    for (const cube of freeCubes) {
+        if (visited.has(cube.id)) continue;
+
+        const queue = [cube];
+        visited.add(cube.id);
+        positions.set(cube.id, { gx: 0, gy: 0 });
+
+        while (queue.length > 0) {
+            const cur = queue.shift();
+            const pos = positions.get(cur.id);
+            if (!cur.neighbors) continue;
+
+            for (let side = 0; side < 4; side++) {
+                const n = cur.neighbors[side];
+                if (!n || visited.has(n.cube)) continue;
+                if (!cubeMap.has(n.cube)) continue;
+
+                visited.add(n.cube);
+                const [dx, dy] = sideDelta[side];
+                positions.set(n.cube, { gx: pos.gx + dx, gy: pos.gy + dy });
+                queue.push(cubeMap.get(n.cube));
+            }
+        }
+    }
+
+    // Normalize: shift so min gx/gy = 0, separate disconnected components
+    if (positions.size > 0) {
+        // Find connected components by BFS grouping
+        const components = [];
+        const assigned = new Set();
+
+        for (const cube of freeCubes) {
+            if (assigned.has(cube.id)) continue;
+            const component = [cube.id];
+            assigned.add(cube.id);
+            const q = [cube];
+            while (q.length > 0) {
+                const c = q.shift();
+                if (!c.neighbors) continue;
+                for (const n of c.neighbors) {
+                    if (n && cubeMap.has(n.cube) && !assigned.has(n.cube)) {
+                        assigned.add(n.cube);
+                        component.push(n.cube);
+                        q.push(cubeMap.get(n.cube));
+                    }
+                }
+            }
+            components.push(component);
+        }
+
+        // Lay components side by side
+        let offsetX = 0;
+        for (const comp of components) {
+            let minGx = Infinity, minGy = Infinity, maxGx = -Infinity;
+            for (const id of comp) {
+                const p = positions.get(id);
+                if (p.gx < minGx) minGx = p.gx;
+                if (p.gy < minGy) minGy = p.gy;
+                if (p.gx > maxGx) maxGx = p.gx;
+            }
+            for (const id of comp) {
+                const p = positions.get(id);
+                p.gx = p.gx - minGx + offsetX;
+                p.gy = p.gy - minGy;
+            }
+            offsetX += (maxGx - minGx) + 2; // 1-cell gap
+        }
+    }
+
+    return positions;
+}
+
+function renderFreeCubes(freeCubes, layout) {
+    const CELL = 88; // 80px cube + 8px gap
+
+    // Compute canvas dimensions from layout
+    let maxGx = 0, maxGy = 0;
+    for (const pos of layout.values()) {
+        if (pos.gx > maxGx) maxGx = pos.gx;
+        if (pos.gy > maxGy) maxGy = pos.gy;
+    }
+
+    const canvas = el("div", {
+        className: "observer-canvas",
+        style: {
+            width: ((maxGx + 1) * CELL) + "px",
+            height: ((maxGy + 1) * CELL) + "px",
+        },
+    });
+
+    for (const cube of freeCubes) {
+        const pos = layout.get(cube.id);
+        if (!pos) continue;
+
+        const wrapper = el("div", {
+            className: "observer-cube-wrapper",
+            style: {
+                left: (pos.gx * CELL) + "px",
+                top: (pos.gy * CELL) + "px",
+            },
+        });
+        wrapper.appendChild(renderCubeVisual(cube));
+        canvas.appendChild(wrapper);
+    }
+
+    return canvas;
+}
+
+function renderDockStation(dockedCubes) {
+    const dock = el("div", { className: "observer-dock" });
+    dock.appendChild(el("div", { className: "observer-dock-label" }, "Docking Station"));
+
+    // Grid layout: row 0 = slots 4,5,6 (top), row 1 = slots 1,2,3 (bottom)
+    const slotMap = {};
+    for (const c of dockedCubes) {
+        if (c.dock_location != null) slotMap[c.dock_location] = c;
+    }
+
+    // Slots in grid order: top-left=4, top-mid=5, top-right=6, bottom-left=1, bottom-mid=2, bottom-right=3
+    const slotOrder = [4, 5, 6, 1, 2, 3];
+
+    for (const slotNum of slotOrder) {
+        const cube = slotMap[slotNum];
+        const slot = el("div", { className: "observer-dock-slot" + (cube ? " occupied" : "") });
+        if (cube) {
+            slot.appendChild(renderCubeVisual(cube));
+        } else {
+            slot.appendChild(el("span", { className: "dock-slot-num" }, String(slotNum)));
+        }
+        dock.appendChild(slot);
+    }
+
+    return dock;
+}
+
+function renderCubeVisual(cube) {
+    const classes = ["obs-cube"];
+    if (!cube.online) classes.push("obs-offline");
+
+    // Check for shake animation
+    const shakeTs = state.observerShakes[cube.id];
+    if (shakeTs && (Date.now() - shakeTs) < 1500) {
+        classes.push("obs-shake");
+    }
+
+    const cubeEl = el("div", { className: classes.join(" ") });
+
+    // Apply 3D perspective tilt on the cube box (lean only)
+    if (cube.tilt) {
+        const [tx, ty] = cube.tilt;
+        const rotY = (tx - 1) * 25;
+        const rotX = -(ty - 1) * 25;
+        cubeEl.style.transform = "perspective(200px) rotateX(" + rotX + "deg) rotateY(" + rotY + "deg)";
+    }
+
+    // Arrow: points toward the cube's logical top (face-on view)
+    const arrow = el("div", { className: "obs-cube-arrow" });
+    if (cube.tilt) {
+        const [tx, ty] = cube.tilt;
+        let arrowAngle = 0;
+        if (tx === 0) arrowAngle = -90;        // left side down → arrow left
+        else if (tx === 2) arrowAngle = 90;    // right side down → arrow right
+        else if (ty === 2) arrowAngle = 180;   // top side down → arrow down
+        if (arrowAngle !== 0) arrow.style.transform = "rotate(" + arrowAngle + "deg)";
+    }
+    cubeEl.appendChild(arrow);
+
+    // Button press indicator (green circle around arrow)
+    if (cube.button_pressed) {
+        cubeEl.appendChild(el("div", { className: "obs-cube-button" }));
+    }
+
+    // Battery low indicator
+    if (cube.battery_low) {
+        cubeEl.appendChild(el("div", { className: "obs-cube-battery" }, "\u26A0"));
+    }
+
+    // Cube ID label
+    cubeEl.appendChild(el("div", { className: "obs-cube-id" }, String(cube.id)));
+
+    return cubeEl;
+}
+
+// ── Category filter + Sort ──────────────────────────────────────
+
+function getCategories() {
+    const cats = new Set();
+    for (const g of state.games) cats.add(g.category);
+    return Array.from(cats).sort();
+}
+
+function renderFilterDropdown() {
+    const sel = document.getElementById("filter-select");
+    if (!sel) return;
+
+    const prev = sel.value || state.filterCategory;
+    clearChildren(sel);
+
+    sel.appendChild(el("option", { value: "all" }, "All"));
+    sel.appendChild(el("option", { value: "installed" }, "Installed"));
+
+    for (const cat of getCategories()) {
+        const label = cat.charAt(0).toUpperCase() + cat.slice(1);
+        sel.appendChild(el("option", { value: cat }, label));
+    }
+
+    sel.value = prev;
+    sel.onchange = function() {
+        state.filterCategory = this.value;
+        renderGameGrid();
+    };
+}
+
+function renderSortButtons() {
+    const bar = document.getElementById("sort-buttons");
+    if (!bar) return;
+    clearChildren(bar);
+
+    const sorts = [
+        { key: "alpha", label: "A\u2013Z" },
+        { key: "size", label: "Size" },
+    ];
+    for (const s of sorts) {
+        const btn = el("button", {
+            className: "sort-btn" + (state.sortBy === s.key ? " active" : ""),
+            onClick: () => { state.sortBy = s.key; renderSortButtons(); renderGameGrid(); },
+        }, s.label);
+        bar.appendChild(btn);
+    }
+}
+
+function getFilteredSortedGames() {
+    let list = state.games;
+
+    // Filter
+    if (state.filterCategory === "installed") {
+        list = list.filter(g => (state.installed_apps[g.name] || []).length > 0);
+    } else if (state.filterCategory !== "all") {
+        list = list.filter(g => g.category === state.filterCategory);
+    }
+
+    // Sort
+    list = list.slice();
+    if (state.sortBy === "size") {
+        list.sort((a, b) => b.size_kb - a.size_kb);
+    } else {
+        list.sort((a, b) => a.display_name.localeCompare(b.display_name));
+    }
+    return list;
 }
 
 function renderGameGrid() {
     const grid = document.getElementById("game-grid");
     clearChildren(grid);
 
-    for (const game of state.games) {
-        const initials = gameInitials(game.display_name);
-
-        const icon = el("div", { className: "game-icon", style: { background: game.color } }, initials);
+    for (const game of getFilteredSortedGames()) {
+        let icon;
+        if (game.cover) {
+            const img = el("img", {
+                className: "game-cover-img",
+                src: "covers/" + game.cover,
+                alt: game.display_name,
+                draggable: "false",
+            });
+            icon = el("div", { className: "game-icon game-icon-cover" }, img);
+        } else {
+            const initials = gameInitials(game.display_name);
+            icon = el("div", { className: "game-icon", style: { background: game.color } }, initials);
+        }
         const name = el("div", { className: "game-name" }, game.display_name);
         const cat = el("div", { className: "game-category" }, game.category);
         const action = el("div", { className: "game-action", id: "action-" + game.name });

@@ -21,21 +21,30 @@ Legacy `.siftapp` binaries are also supported as opaque payload installs.
 
 from __future__ import annotations
 
+import logging
 import os
+import io
+import json
 import struct
+import subprocess
+import tempfile
 import time
 import zlib
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Callable, Union, Literal
 
+logger = logging.getLogger(__name__)
+
 from .dongle import SifteoDongle
 from .protocol import (
-    USB_MSG_LEN,
+    USB_OUT_MSG_LEN,
     Op, Message, DONGLE_ADDRESS,
     ASSET_TYPE_IMAGE, ASSET_TYPE_SOUND,
     UPLOAD_OK, UPLOAD_CRC_FAIL, UPLOAD_DISK_FULL, UPLOAD_MISALIGNMENT,
     UPLOAD_RESULT_STATUS_IDX,
+    UPLOAD_RESULT_ORIG_CRC_IDX, UPLOAD_RESULT_CALC_CRC_IDX,
     APP_INFO_IMAGES_IDX, APP_INFO_SOUNDS_IDX, APP_INFO_BYTES_IDX,
     ASSET_INV_ASSET_ID_IDX, ASSET_INV_ASSET_TYPE_IDX,
     CRC_ORIG_IDX, CRC_CALC_IDX,
@@ -46,7 +55,7 @@ from .protocol import (
     cmd_app_info_request, cmd_asset_inventory_request,
     cmd_available_storage, cmd_delete_all_assets, cmd_delete_asset,
     cmd_verify_crc, cmd_frame_buffer_dump, cmd_asset_dump_request,
-    cmd_request_app_list,
+    cmd_request_app_list, cmd_game_start,
     rgb_to_rgb332,
     unpack_u8, unpack_u16, unpack_u32, op_name,
 )
@@ -54,14 +63,13 @@ from .protocol import (
 # Max data bytes in a single ASSET_UPLOAD chunk.
 #
 # In this transport implementation, `Message.to_bytes()` can carry at most
-# `USB_MSG_LEN - 4` payload bytes (len/msg_id/address/opcode envelope).
+# `USB_OUT_MSG_LEN - 4` payload bytes (len/msg_id/address/opcode envelope).
 # Upload chunk payload adds 2 bytes of overhead (`byte_count` + `seq_id`),
 # so the safe data budget is:
-#   MAX_CHUNK_DATA = (USB_MSG_LEN - 4) - 2 = USB_MSG_LEN - 6
+#   MAX_CHUNK_DATA = (USB_OUT_MSG_LEN - 4) - 2 = USB_OUT_MSG_LEN - 6
 #
-# With USB_MSG_LEN=33 this yields 27 bytes. Using 28 would truncate full
-# chunks by one byte and can trigger cube-side flash alignment failures.
-MAX_CHUNK_DATA = USB_MSG_LEN - 6
+# With USB_OUT_MSG_LEN=34 this yields 28 bytes, matching legacy helpers.
+MAX_CHUNK_DATA = USB_OUT_MSG_LEN - 6
 
 # Time to wait after sending the upload header (cube flash is slow).
 HEADER_PROCESS_DELAY = 3.0
@@ -72,6 +80,21 @@ SIFTAPP_MAGIC_PREFIX = b"\x5D\xB9\x5E\xCC\x86\x2B\x75\x0E"
 SIFTAPP_MAGIC_SUFFIX = b"\x44\xAE\x26\xFC"
 SIFTAPP_TOKEN_OFFSET = 8
 SIFTAPP_INTERNAL_ID_OFFSET = 10
+
+# Legacy SiftRunner AppPackager AES key/IV words.
+# Decryption expects 32-bit word byte-swapping on input/output.
+_APPPACKAGER_KEY_WORDS = (
+    0x2BF0510B,
+    0x559C91B1,
+    0x9DCC27F9,
+    0xD727C08A,
+)
+_APPPACKAGER_IV_WORDS = (
+    0x00010203,
+    0x04050607,
+    0x08090A0B,
+    0x0C0D0E0F,
+)
 
 
 @dataclass
@@ -116,6 +139,23 @@ class FrameBuffer:
     @property
     def pixel_count(self) -> int:
         return self.width * self.height
+
+
+@dataclass
+class UploadResult:
+    """Result of an asset upload attempt, including CRC details from firmware."""
+    status: int
+    status_idx: int
+    original_crc: Optional[int] = None
+    calculated_crc: Optional[int] = None
+
+    @property
+    def ok(self) -> bool:
+        return self.status == UPLOAD_OK
+
+    @property
+    def crc_fail(self) -> bool:
+        return self.status == UPLOAD_CRC_FAIL
 
 
 class UploadError(Exception):
@@ -173,9 +213,23 @@ class SiftAppInstallResult:
     app_id: int
     asset_id: int
     bytes_uploaded: int
-    app_id_source: Literal["explicit", "header", "filename_crc32"]
+    app_id_source: Literal["explicit", "header", "manifest_dev_app_id", "filename_crc32"]
     payload_shape: Literal["container", "body"]
+    install_mode: Literal["opaque", "bundle"]
+    asset_count: int
     header: SiftAppHeader
+
+
+@dataclass
+class SiftBundleAsset:
+    """Single image asset extracted from a .sftbndl container."""
+
+    name: str
+    asset_id: int
+    marker: Literal["C", "R"]
+    width: int
+    height: int
+    payload: bytes
 
 
 # -- Image Encoding --
@@ -433,6 +487,14 @@ def ensure_trailing_crc(data: bytes) -> bytes:
     return data + struct.pack("<I", crc)
 
 
+def align4(data: bytes) -> bytes:
+    """Pad payload with zero bytes to a 4-byte boundary."""
+    pad = (-len(data)) % 4
+    if pad == 0:
+        return data
+    return data + (b"\x00" * pad)
+
+
 def parse_siftapp_header(data: bytes) -> SiftAppHeader:
     """Parse the fixed 16-byte legacy `.siftapp` header if present.
 
@@ -481,6 +543,209 @@ def extract_siftapp_payload(
     return data[SIFTAPP_HEADER_SIZE:]
 
 
+def _swap_u32_words(data: bytes) -> bytes:
+    """Swap byte order within each 32-bit word."""
+    if len(data) % 4 != 0:
+        raise ValueError("Data length must be a multiple of 4 for word-swap")
+    out = bytearray(len(data))
+    for i in range(0, len(data), 4):
+        out[i:i + 4] = data[i:i + 4][::-1]
+    return bytes(out)
+
+
+def _strip_pkcs7_padding(data: bytes) -> bytes:
+    """Strip PKCS7 padding when present; otherwise return unchanged."""
+    if not data:
+        return data
+    pad = data[-1]
+    if 1 <= pad <= 16 and data.endswith(bytes([pad]) * pad):
+        return data[:-pad]
+    return data
+
+
+def decrypt_legacy_siftapp(data: bytes) -> bytes:
+    """Decrypt a legacy `.siftapp` payload to its ZIP bytes."""
+    key = b"".join(struct.pack(">I", w) for w in _APPPACKAGER_KEY_WORDS)
+    iv = b"".join(struct.pack(">I", w) for w in _APPPACKAGER_IV_WORDS)
+    swapped_in = _swap_u32_words(data)
+
+    with tempfile.TemporaryDirectory(prefix="sifteo_siftapp_") as td:
+        in_path = Path(td) / "cipher.bin"
+        out_path = Path(td) / "plain.bin"
+        in_path.write_bytes(swapped_in)
+        try:
+            subprocess.run(
+                [
+                    "openssl",
+                    "enc",
+                    "-aes-128-cfb",
+                    "-d",
+                    "-nopad",
+                    "-K",
+                    key.hex(),
+                    "-iv",
+                    iv.hex(),
+                    "-in",
+                    str(in_path),
+                    "-out",
+                    str(out_path),
+                ],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except FileNotFoundError as exc:
+            raise ValueError(
+                "openssl is required to decrypt legacy .siftapp files"
+            ) from exc
+        except subprocess.CalledProcessError as exc:
+            raise ValueError(
+                "Failed to decrypt .siftapp with legacy AppPackager cipher"
+            ) from exc
+        plain = out_path.read_bytes()
+
+    swapped_out = _swap_u32_words(plain)
+    return _strip_pkcs7_padding(swapped_out)
+
+
+def _parse_manifest_dev_app_id(raw: object) -> Optional[int]:
+    """Parse manifest devAppID values that may be int or string."""
+    if isinstance(raw, int):
+        return raw & 0xFFFFFFFF
+    if isinstance(raw, str):
+        s = raw.strip()
+        if s.isdigit():
+            return int(s, 10) & 0xFFFFFFFF
+    return None
+
+
+def parse_siftbndl(data: bytes, names: list[str]) -> list[SiftBundleAsset]:
+    """Parse a legacy `.sftbndl` image container."""
+    if len(data) < 3 or data[0] != ord("N"):
+        raise ValueError("Invalid .sftbndl header (missing magic 'N')")
+
+    count = struct.unpack_from("<H", data, 1)[0]
+    if count <= 0:
+        raise ValueError("Invalid .sftbndl: asset count is zero")
+    if len(names) != count:
+        raise ValueError(
+            "Index entry count does not match .sftbndl count "
+            f"({len(names)} != {count})"
+        )
+
+    header_bytes = 3 + (count * 4)
+    if len(data) < header_bytes:
+        raise ValueError("Invalid .sftbndl: offset table truncated")
+
+    offsets = [struct.unpack_from("<I", data, 3 + i * 4)[0] for i in range(count)]
+    assets: list[SiftBundleAsset] = []
+    for i, start in enumerate(offsets):
+        end = offsets[i + 1] if (i + 1) < len(offsets) else len(data)
+        if start < header_bytes or start >= len(data):
+            raise ValueError(
+                f"Invalid .sftbndl: offset {start} out of range for asset {i}"
+            )
+        if end <= start or end > len(data):
+            raise ValueError(
+                f"Invalid .sftbndl: bad asset bounds {start}:{end} for asset {i}"
+            )
+        chunk = data[start:end]
+        if len(chunk) < 5:
+            raise ValueError(f"Invalid .sftbndl: asset {i} chunk too short")
+
+        marker_byte = chunk[0]
+        if marker_byte == ord("C"):
+            marker: Literal["C", "R"] = "C"
+        elif marker_byte == ord("R"):
+            marker = "R"
+        else:
+            raise ValueError(
+                f"Invalid .sftbndl: unknown asset marker 0x{marker_byte:02X}"
+            )
+
+        width = struct.unpack_from("<H", chunk, 1)[0]
+        height = struct.unpack_from("<H", chunk, 3)[0]
+        assets.append(
+            SiftBundleAsset(
+                name=names[i],
+                asset_id=i,
+                marker=marker,
+                width=width,
+                height=height,
+                payload=chunk,
+            )
+        )
+    return assets
+
+
+def extract_siftapp_bundle_assets(
+    container_bytes: bytes,
+) -> tuple[Optional[str], Optional[int], list[SiftBundleAsset]]:
+    """Extract installable image assets from a legacy `.siftapp` container."""
+    decrypted = decrypt_legacy_siftapp(container_bytes)
+    if not zipfile.is_zipfile(io.BytesIO(decrypted)):
+        raise ValueError("Decrypted .siftapp payload is not a valid ZIP archive")
+
+    with zipfile.ZipFile(io.BytesIO(decrypted)) as zf:
+        manifest_candidates = [n for n in zf.namelist() if n.endswith("manifest.json")]
+        if not manifest_candidates:
+            raise ValueError("No manifest.json found in decrypted .siftapp bundle")
+        manifest_path = manifest_candidates[0]
+
+        manifest_data = json.loads(
+            zf.read(manifest_path).decode("utf-8", errors="replace")
+        )
+        app_meta = manifest_data.get("app", {}) if isinstance(manifest_data, dict) else {}
+        title = app_meta.get("title") if isinstance(app_meta, dict) else None
+        dev_app_id = (
+            _parse_manifest_dev_app_id(app_meta.get("devAppID"))
+            if isinstance(app_meta, dict)
+            else None
+        )
+        images_path = (
+            str(app_meta.get("imagesPath"))
+            if isinstance(app_meta, dict) and app_meta.get("imagesPath")
+            else "assets/images"
+        ).strip().strip("/")
+
+        root_dir = manifest_path.rsplit("/", 1)[0] if "/" in manifest_path else ""
+        expected_prefix = f"{root_dir}/{images_path}/".lower() if root_dir else f"{images_path}/".lower()
+
+        def _is_in_images_dir(path: str) -> bool:
+            return path.lower().startswith(expected_prefix)
+
+        index_candidates = [
+            n for n in zf.namelist()
+            if n.endswith("_siftbndl_index.txt") and _is_in_images_dir(n)
+        ]
+        bundle_candidates = [
+            n for n in zf.namelist()
+            if n.endswith(".sftbndl") and _is_in_images_dir(n)
+        ]
+        # Fallback for odd manifests with non-matching imagesPath casing.
+        if not index_candidates:
+            index_candidates = [n for n in zf.namelist() if n.endswith("_siftbndl_index.txt")]
+        if not bundle_candidates:
+            bundle_candidates = [n for n in zf.namelist() if n.endswith(".sftbndl")]
+
+        if not index_candidates or not bundle_candidates:
+            raise ValueError("No image bundle/index files found in decrypted .siftapp")
+
+        index_path = index_candidates[0]
+        bundle_path = bundle_candidates[0]
+
+        index_lines = [
+            ln.strip()
+            for ln in zf.read(index_path).decode("utf-8", errors="replace").splitlines()
+            if ln.strip()
+        ]
+        bundle_data = zf.read(bundle_path)
+        assets = parse_siftbndl(bundle_data, index_lines)
+        if not assets:
+            raise ValueError("No assets parsed from .sftbndl bundle")
+        return title if isinstance(title, str) else None, dev_app_id, assets
+
+
 def read_siftimg_crc(file_path: Union[str, Path]) -> int:
     """Read the CRC from the last 4 bytes of a .siftimg file."""
     size = os.path.getsize(file_path)
@@ -509,16 +774,21 @@ class AssetManager:
     def _decode_upload_status(payload: bytes) -> tuple[int, int]:
         """Decode upload status from firmware-variant payload layouts.
 
-        Different firmware/queue paths report ASSET_UPLOAD_RESULT with
-        slightly different payload offsets. We accept all known layouts
-        and return (status, payload_index).
+        The authoritative offset is UPLOAD_RESULT_STATUS_IDX (payload[6]),
+        derived from the original SiftRunner C HID library format where
+        getUInt8AtOffet(rply, 6, header=2) reads rply[8] = our payload[6].
+
+        Some firmware or queue-path variants shift the status byte; we
+        fall back to nearby offsets when the primary doesn't hold a valid
+        status code.
+
+        Returns (status, payload_index).
         """
         valid = {UPLOAD_OK, UPLOAD_CRC_FAIL, UPLOAD_DISK_FULL, UPLOAD_MISALIGNMENT}
         candidate_indices = (
-            6,                         # legacy helper offset (authoritative)
+            UPLOAD_RESULT_STATUS_IDX,  # payload[6]: authoritative original offset
             7,                         # observed event-queue variant
-            UPLOAD_RESULT_STATUS_IDX,  # protocol constant fallback
-            5,
+            5,                         # adjacent offset (off-by-one guard)
             4,
             0,
         )
@@ -526,6 +796,12 @@ class AssetManager:
             if idx < len(payload):
                 status = payload[idx]
                 if status in valid:
+                    if idx != UPLOAD_RESULT_STATUS_IDX:
+                        logger.warning(
+                            "Upload status found at payload[%d] instead of "
+                            "expected payload[%d] — firmware variant?",
+                            idx, UPLOAD_RESULT_STATUS_IDX,
+                        )
                     return status, idx
         raise UploadError(
             "Unknown upload status layout: "
@@ -581,6 +857,20 @@ class AssetManager:
                 break
             drained += 1
         return drained
+
+    def _drain_event_queue(self, limit: int = 2048) -> int:
+        """Drop stale event packets and return count removed."""
+        drained = 0
+        while drained < limit:
+            msg = self._dongle.get_event(timeout=None)
+            if msg is None:
+                break
+            drained += 1
+        return drained
+
+    def _drain_all_queues(self) -> tuple[int, int]:
+        """Drop stale packets from both response and event queues."""
+        return self._drain_response_queue(), self._drain_event_queue()
 
     def _wait_for_either(self, cube_id: int, opcode: int,
                          timeout: float = 10.0) -> Optional[tuple[bytes, bool]]:
@@ -641,6 +931,100 @@ class AssetManager:
         return self.upload_bytes(cube_id, app_id, asset_id, data,
                                  asset_type=asset_type, progress=progress)
 
+    def _upload_raw(self, cube_id: int, app_id: int, asset_id: int,
+                    data: bytes, asset_type: int = ASSET_TYPE_IMAGE,
+                    progress: Optional[Callable[[int, int], None]] = None,
+                    ) -> UploadResult:
+        """Low-level upload that returns the full UploadResult.
+
+        Handles the protocol steps (game_start, header, chunks, result)
+        and returns the parsed result including CRC values from firmware.
+        """
+        size = len(data)
+
+        # Put cube into game/feedback mode before asset transfer.
+        self._dongle.send(cmd_game_start(cube_id), wait_for_ack=True)
+        time.sleep(0.05)
+
+        # Drop stale responses so write ACK parsing starts clean.
+        self._drain_response_queue()
+
+        # Step 1: Send upload header.
+        self._dongle.send(
+            cmd_asset_upload_header(cube_id, size, app_id, asset_id, asset_type),
+            wait_for_ack=True,
+        )
+
+        # Step 2: Wait for cube to process header (flash is slow).
+        time.sleep(HEADER_PROCESS_DELAY)
+
+        # Step 3: Send data in chunks.
+        offset = 0
+        seq_id = 0
+        while offset < size:
+            chunk_size = min(MAX_CHUNK_DATA, size - offset)
+            chunk = data[offset:offset + chunk_size]
+            self._dongle.send(
+                cmd_asset_upload_chunk(cube_id, chunk, seq_id),
+                wait_for_ack=True,
+            )
+            seq_id = (seq_id + 1) & 0xFF
+            offset += chunk_size
+            if progress:
+                progress(offset, size)
+
+        # Step 4: Wait for upload result (may arrive on either queue).
+        result = self._wait_for_either(cube_id, Op.ASSET_UPLOAD_RESULT, timeout=15.0)
+        if result is None:
+            raise UploadError("No upload result received (timed out)")
+
+        raw, _from_response = result
+        logger.debug(
+            "ASSET_UPLOAD_RESULT raw[%d]: %s (queue=%s)",
+            len(raw), raw[:20].hex(),
+            "response" if _from_response else "event",
+        )
+        payload = raw[3:] if len(raw) > 3 else b""
+        if not payload:
+            raise UploadError(
+                f"Upload result too short ({len(raw)} bytes, "
+                f"payload={payload.hex()})"
+            )
+
+        status, status_idx = self._decode_upload_status(payload)
+
+        # Extract CRC values from the upload result payload.
+        #
+        # The CRC fields follow immediately after the status byte:
+        #   status_idx + 1 : u32 original CRC (what the cube found in the data)
+        #   status_idx + 5 : u32 calculated CRC (what the cube computed)
+        #
+        # Previously we used fixed offsets (payload[7] and payload[11]),
+        # which only worked when status landed at the expected payload[6].
+        # When the status shifts to payload[7] (event-queue variant), the
+        # fixed offsets read garbage that includes the status byte itself
+        # (e.g. orig=0x02XXXXXX where 0x02 is the CRC_FAIL status code).
+        original_crc = None
+        calculated_crc = None
+        orig_crc_idx = status_idx + 1
+        calc_crc_idx = status_idx + 5
+        if len(payload) >= calc_crc_idx + 4:
+            original_crc = unpack_u32(payload, orig_crc_idx)
+            calculated_crc = unpack_u32(payload, calc_crc_idx)
+            logger.debug(
+                "Upload result CRCs: original=0x%08X calculated=0x%08X "
+                "(at payload[%d] and payload[%d], status at payload[%d])",
+                original_crc, calculated_crc,
+                orig_crc_idx, calc_crc_idx, status_idx,
+            )
+
+        return UploadResult(
+            status=status,
+            status_idx=status_idx,
+            original_crc=original_crc,
+            calculated_crc=calculated_crc,
+        )
+
     def upload_bytes(self, cube_id: int, app_id: int, asset_id: int,
                      data: bytes, asset_type: int = ASSET_TYPE_IMAGE,
                      progress: Optional[Callable[[int, int], None]] = None) -> bool:
@@ -660,92 +1044,144 @@ class AssetManager:
         Raises:
             UploadError: If the cube reports an error.
         """
-        size = len(data)
-
-        # Drop stale responses so write ACK parsing starts clean.
-        self._drain_response_queue()
-
-        # Step 1: Send upload header and wait for dongle write ACK.
-        self._dongle.send(
-            cmd_asset_upload_header(cube_id, size, app_id, asset_id, asset_type),
-            wait_for_ack=True,
+        result = self._upload_raw(
+            cube_id, app_id, asset_id, data,
+            asset_type=asset_type, progress=progress,
         )
-
-        # Step 2: Wait for cube to process header (flash is slow)
-        time.sleep(HEADER_PROCESS_DELAY)
-
-        # Step 3: Send data in chunks
-        offset = 0
-        seq_id = 0
-        while offset < size:
-            chunk_size = min(MAX_CHUNK_DATA, size - offset)
-            chunk = data[offset:offset + chunk_size]
-            self._dongle.send(
-                cmd_asset_upload_chunk(cube_id, chunk, seq_id),
-                wait_for_ack=True,
-            )
-            seq_id = (seq_id + 1) & 0xFF
-            offset += chunk_size
-            if progress:
-                progress(offset, size)
-
-        # Step 4: Wait for upload result (may arrive on either queue)
-        result = self._wait_for_either(cube_id, Op.ASSET_UPLOAD_RESULT, timeout=15.0)
-        if result is None:
-            raise UploadError("No upload result received (timed out)")
-
-        raw, _from_response = result
-        # Parse status byte from the payload.
-        # Wire format: [radio_msg_len, address, opcode, payload...]
-        # Payload starts at raw[3]. UPLOAD_RESULT_STATUS_IDX is payload-relative.
-        payload = raw[3:] if len(raw) > 3 else b""
-        if not payload:
-            raise UploadError(
-                f"Upload result too short ({len(raw)} bytes, "
-                f"payload={payload.hex()})"
-            )
-        status, status_idx = self._decode_upload_status(payload)
-        status_details = (
-            f"status={status} at payload[{status_idx}], "
-            f"raw[{len(raw)}]={raw[:20].hex()}, "
-            f"payload[{len(payload)}]={payload[:16].hex()}"
-        )
-
-        if status == UPLOAD_OK:
+        if result.ok:
             return True
-        elif status == UPLOAD_CRC_FAIL:
+
+        status_details = f"status={result.status} at payload[{result.status_idx}]"
+        if result.original_crc is not None:
+            status_details += (
+                f", orig_crc=0x{result.original_crc:08X}"
+                f", calc_crc=0x{result.calculated_crc:08X}"
+            )
+
+        if result.crc_fail:
             raise UploadError(f"CRC verification failed on cube ({status_details})")
-        elif status == UPLOAD_DISK_FULL:
+        elif result.status == UPLOAD_DISK_FULL:
             raise UploadError(f"Cube flash storage is full ({status_details})")
-        elif status == UPLOAD_MISALIGNMENT:
+        elif result.status == UPLOAD_MISALIGNMENT:
             raise UploadError(f"Flash alignment error on cube ({status_details})")
         else:
+            raise UploadError(f"Unknown upload status ({status_details})")
+
+    def upload_bytes_learn_crc(
+        self, cube_id: int, app_id: int, asset_id: int,
+        data: bytes, asset_type: int = ASSET_TYPE_IMAGE,
+        progress: Optional[Callable[[int, int], None]] = None,
+    ) -> bool:
+        """Upload asset data using a two-pass CRC-learning strategy.
+
+        The cube firmware uses a proprietary CRC algorithm.  When the data
+        does not already carry valid trailing CRC bytes, this method:
+
+        1. **Probe pass**: uploads ``data`` padded with 4 zero bytes as a
+           dummy CRC.  The cube stores the data but reports CRC_FAIL.
+        2. **Learn**: queries the cube via ``verify_crc`` to read back the
+           cube's computed CRC for the stored data.
+        3. **Delete** the failed probe asset.
+        4. **Final pass**: re-uploads ``data`` with the correct CRC appended.
+
+        If the first upload already succeeds (data already has valid CRC),
+        the subsequent steps are skipped.
+
+        Returns True on success.
+        Raises UploadError if the CRC cannot be learned or the re-upload
+        still fails.
+        """
+        # Ensure data is 4-byte aligned before appending CRC probe.
+        aligned_data = align4(data)
+
+        # Probe pass: append 4 zero bytes as dummy CRC.
+        probe_data = aligned_data + b"\x00\x00\x00\x00"
+        probe_result = self._upload_raw(
+            cube_id, app_id, asset_id, probe_data,
+            asset_type=asset_type, progress=progress,
+        )
+
+        if probe_result.ok:
+            return True
+
+        if not probe_result.crc_fail:
             raise UploadError(
-                f"Unknown upload status: {status} at payload[{status_idx}] "
-                f"(queue={'response' if _from_response else 'event'}, "
-                f"raw[{len(raw)}]={raw[:20].hex()}, "
-                f"payload[{len(payload)}]={payload[:16].hex()})"
+                f"Probe upload failed with non-CRC error "
+                f"(status={probe_result.status})"
             )
+
+        # Drain both queues to clear stale responses before verify_crc.
+        self._drain_all_queues()
+
+        # Learn the CRC via verify_crc.  The cube stores the data even on
+        # CRC_FAIL, so verify_crc returns the CRC the cube computed over the
+        # body and the dummy CRC we appended.
+        learned_crc = None
+        time.sleep(0.5)  # short settle time after failed upload
+        crc_check = self.verify_crc(cube_id, app_id, asset_id,
+                                     asset_type, timeout=10.0)
+        if crc_check is not None:
+            learned_crc = crc_check.calculated_crc
+            logger.info(
+                "verify_crc learned CRC 0x%08X for asset %d "
+                "(stored_crc=0x%08X, valid=%s)",
+                learned_crc, asset_id,
+                crc_check.original_crc, crc_check.valid,
+            )
+            print(
+                f"    CRC learned via verify: 0x{learned_crc:08X} "
+                f"(stored=0x{crc_check.original_crc:08X})"
+            )
+
+        if learned_crc is None:
+            raise UploadError(
+                "CRC-learning failed: verify_crc returned no data after "
+                "probe upload (cube may not store assets on CRC_FAIL)"
+            )
+
+        # Delete the failed probe asset so the re-upload slot is clean.
+        self.delete_asset(cube_id, app_id, asset_id, asset_type, timeout=10.0)
+        time.sleep(0.5)
+
+        # Drain all queues again before the re-upload.
+        self._drain_all_queues()
+
+        # Final pass: append the learned CRC.
+        final_data = aligned_data + struct.pack("<I", learned_crc)
+        final_result = self._upload_raw(
+            cube_id, app_id, asset_id, final_data,
+            asset_type=asset_type, progress=progress,
+        )
+
+        if final_result.ok:
+            print(f"    CRC re-upload: OK")
+            return True
+
+        raise UploadError(
+            f"CRC-learning re-upload failed "
+            f"(status={final_result.status}, "
+            f"learned_crc=0x{learned_crc:08X})"
+        )
 
     def install_siftapp(self, cube_id: int,
                         siftapp_path: Union[str, Path],
                         app_id: Optional[int] = None,
                         prefer_header_app_id: bool = False,
+                        install_mode: Literal["auto", "bundle", "opaque"] = "auto",
                         payload_shape: Literal["container", "body"] = "container",
-                        payload_crc_mode: Literal["append", "none"] = "append",
+                        payload_crc_mode: Literal["append", "none", "learn"] = "none",
                         asset_id: int = 0,
                         asset_type: int = ASSET_TYPE_IMAGE,
                         progress: Optional[Callable[[int, int], None]] = None
                         ) -> SiftAppInstallResult:
-        """Install a legacy `.siftapp` binary as an opaque payload on a cube.
+        """Install a legacy `.siftapp` on a cube.
 
-        This preserves compatibility with archived bundle files by uploading
-        their raw bytes directly to cube flash under a selected app_id.
-
-        If `app_id` is omitted, the default app ID is `crc32(filename_stem)`.
-        This avoids collisions across legacy bundles (header internal IDs are
-        often reused across different apps). Set `prefer_header_app_id=True`
-        to opt in to the legacy header-derived ID when available.
+        Modes:
+            - bundle: decrypt+unpack `.siftapp`, extract `.sftbndl` image assets,
+                      and upload each image as a separate cube asset.
+            - opaque: upload container bytes directly as one asset (legacy fallback).
+            - auto: try bundle mode first, then fall back to opaque on parse/decrypt
+                    failures.
         """
         path = Path(siftapp_path)
         if not path.exists():
@@ -753,40 +1189,124 @@ class AssetManager:
 
         container_bytes = read_siftapp(path)
         header = parse_siftapp_header(container_bytes)
-        data = extract_siftapp_payload(container_bytes, payload_shape=payload_shape)
 
-        if payload_crc_mode == "append":
-            # Cube asset uploads expect a trailing CRC32 over payload bytes.
-            # Legacy .siftapp bundles are container files and usually do not
-            # include this asset-layer CRC, so we add it when absent.
-            data = ensure_trailing_crc(data)
-        elif payload_crc_mode != "none":
+        if payload_crc_mode not in {"append", "none", "learn"}:
             raise ValueError(
-                "payload_crc_mode must be 'append' or 'none', got "
+                "payload_crc_mode must be 'append', 'none', or 'learn', got "
                 f"{payload_crc_mode!r}"
             )
+        if install_mode not in {"auto", "bundle", "opaque"}:
+            raise ValueError(
+                "install_mode must be 'auto', 'bundle', or 'opaque', got "
+                f"{install_mode!r}"
+            )
 
-        if app_id is not None:
-            resolved_app_id = app_id & 0xFFFFFFFF
-            source: Literal["explicit", "header", "filename_crc32"] = "explicit"
-        elif prefer_header_app_id and header.valid and header.internal_id is not None:
-            resolved_app_id = header.internal_id
-            source = "header"
+        def _resolve_app_id(
+            manifest_dev_app_id: Optional[int] = None,
+        ) -> tuple[int, Literal["explicit", "header", "manifest_dev_app_id", "filename_crc32"]]:
+            if app_id is not None:
+                return app_id & 0xFFFFFFFF, "explicit"
+            if prefer_header_app_id and header.valid and header.internal_id is not None:
+                return header.internal_id & 0xFFFFFFFF, "header"
+            if manifest_dev_app_id is not None:
+                return manifest_dev_app_id & 0xFFFFFFFF, "manifest_dev_app_id"
+            return zlib.crc32(path.stem.encode("utf-8")) & 0xFFFFFFFF, "filename_crc32"
+
+        extracted_assets: Optional[list[SiftBundleAsset]] = None
+        manifest_dev_app_id: Optional[int] = None
+        if install_mode in {"auto", "bundle"}:
+            try:
+                _title, manifest_dev_app_id, extracted_assets = extract_siftapp_bundle_assets(
+                    container_bytes
+                )
+            except ValueError:
+                if install_mode == "bundle":
+                    raise
+                extracted_assets = None
+
+            if extracted_assets is not None:
+                if not extracted_assets:
+                    raise ValueError("No installable assets extracted from .siftapp")
+
+                resolved_app_id, source = _resolve_app_id(
+                    manifest_dev_app_id=manifest_dev_app_id
+                )
+
+                use_learn = payload_crc_mode == "learn"
+                prepared: list[tuple[int, bytes]] = []
+                for entry in extracted_assets:
+                    # Cube flash writes require 4-byte aligned payload lengths.
+                    # Legacy image records from .sftbndl may not be aligned yet.
+                    payload = align4(entry.payload)
+                    if payload_crc_mode == "append":
+                        payload = ensure_trailing_crc(payload)
+                    prepared.append((asset_id + entry.asset_id, payload))
+
+                total_bytes = sum(len(payload) for _, payload in prepared)
+                sent_bytes = 0
+                for aid, payload in prepared:
+                    if progress is None:
+                        cb = None
+                    else:
+                        base = sent_bytes
+
+                        def cb(done: int, _size: int, base_offset: int = base) -> None:
+                            progress(base_offset + done, total_bytes)
+
+                    if use_learn:
+                        self.upload_bytes_learn_crc(
+                            cube_id=cube_id,
+                            app_id=resolved_app_id,
+                            asset_id=aid & 0xFFFF,
+                            data=payload,
+                            asset_type=ASSET_TYPE_IMAGE,
+                            progress=cb,
+                        )
+                    else:
+                        self.upload_bytes(
+                            cube_id=cube_id,
+                            app_id=resolved_app_id,
+                            asset_id=aid & 0xFFFF,
+                            data=payload,
+                            asset_type=ASSET_TYPE_IMAGE,
+                            progress=cb,
+                        )
+                    sent_bytes += len(payload)
+
+                return SiftAppInstallResult(
+                    app_id=resolved_app_id,
+                    asset_id=asset_id,
+                    bytes_uploaded=sent_bytes,
+                    app_id_source=source,
+                    payload_shape="container",
+                    install_mode="bundle",
+                    asset_count=len(prepared),
+                    header=header,
+                )
+
+        data = extract_siftapp_payload(container_bytes, payload_shape=payload_shape)
+        if payload_crc_mode == "append":
+            data = ensure_trailing_crc(data)
+
+        resolved_app_id, source = _resolve_app_id()
+        if payload_crc_mode == "learn":
+            self.upload_bytes_learn_crc(
+                cube_id, resolved_app_id, asset_id, data,
+                asset_type=asset_type, progress=progress,
+            )
         else:
-            resolved_app_id = zlib.crc32(path.stem.encode("utf-8")) & 0xFFFFFFFF
-            source = "filename_crc32"
-
-        self.upload_bytes(
-            cube_id, resolved_app_id, asset_id, data,
-            asset_type=asset_type, progress=progress,
-        )
-
+            self.upload_bytes(
+                cube_id, resolved_app_id, asset_id, data,
+                asset_type=asset_type, progress=progress,
+            )
         return SiftAppInstallResult(
             app_id=resolved_app_id,
             asset_id=asset_id,
             bytes_uploaded=len(data),
             app_id_source=source,
             payload_shape=payload_shape,
+            install_mode="opaque",
+            asset_count=1,
             header=header,
         )
 

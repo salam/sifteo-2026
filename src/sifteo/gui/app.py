@@ -2,10 +2,27 @@
 
 from __future__ import annotations
 
+import platform
 import sys
 from pathlib import Path
 
-WEB_DIR = Path(__file__).parent / "web"
+GUI_DIR = Path(__file__).parent
+WEB_DIR = GUI_DIR / "web"
+ICON_PATH = GUI_DIR / "SifteoSync.icns"
+
+
+def _set_macos_icon() -> None:
+    """Set the dock/app icon on macOS via AppKit."""
+    if platform.system() != "Darwin" or not ICON_PATH.exists():
+        return
+    try:
+        from AppKit import NSApplication, NSImage  # type: ignore[import-untyped]
+
+        icon = NSImage.alloc().initWithContentsOfFile_(str(ICON_PATH))
+        if icon:
+            NSApplication.sharedApplication().setApplicationIconImage_(icon)
+    except ImportError:
+        pass
 
 
 def launch_gui() -> None:
@@ -32,6 +49,7 @@ def launch_gui() -> None:
     )
 
     def on_loaded():
+        _set_macos_icon()
         bridge.set_window(window)
 
     def on_closed():

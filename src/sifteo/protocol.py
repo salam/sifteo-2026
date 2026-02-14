@@ -4,7 +4,7 @@ Sifteo V1 Dongle Packet Protocol.
 Defines opcodes, message formats, and packet construction/parsing
 for communication with V1 cubes via the nRF24LU1+ USB dongle.
 
-Wire format (OUT, host -> dongle, 33 bytes):
+Wire format (OUT, host -> dongle, 34 bytes):
     [radio_msg_len, msg_id, address, opcode, payload..., 0-padding]
     radio_msg_len = 2 + len(payload)  (covers address + opcode + payload)
     msg_id = incrementing counter 0-255 for host<->dongle tracking
@@ -25,7 +25,10 @@ from enum import IntEnum
 
 DONGLE_ADDRESS = 0xFF
 NULL_SIFTABLE_ID = 254
-USB_MSG_LEN = 33
+USB_IN_MSG_LEN = 33
+USB_OUT_MSG_LEN = 34
+# Backward-compatible alias used by RX-side code and tests.
+USB_MSG_LEN = USB_IN_MSG_LEN
 
 
 # -- Opcodes --
@@ -135,7 +138,8 @@ class Message:
     OUT format (host -> dongle): [radio_msg_len, msg_id, address, opcode, payload...]
     IN format  (dongle -> host): [radio_msg_len, address, opcode, payload...]
 
-    Total size: USB_MSG_LEN (33 bytes), zero-padded.
+    OUT size: USB_OUT_MSG_LEN (34 bytes), zero-padded.
+    IN  size: USB_IN_MSG_LEN (33 bytes).
     """
 
     def __init__(self, opcode: int, address: int, payload: bytes = b"", msg_id: int = 0):
@@ -145,12 +149,12 @@ class Message:
         self.payload = payload
 
     def to_bytes(self) -> bytes:
-        """Serialize to 33-byte USB OUT message.
+        """Serialize to 34-byte USB OUT message.
 
         Format: [radio_msg_len, msg_id, address, opcode, payload..., 0-padding]
         """
-        buf = bytearray(USB_MSG_LEN)
-        payload_len = min(len(self.payload), USB_MSG_LEN - 4)
+        buf = bytearray(USB_OUT_MSG_LEN)
+        payload_len = min(len(self.payload), USB_OUT_MSG_LEN - 4)
         buf[0] = (2 + payload_len) & 0xFF   # radio_msg_len = address + opcode + payload
         buf[1] = self.msg_id & 0xFF
         buf[2] = self.address & 0xFF
@@ -310,7 +314,11 @@ UPLOAD_DISK_FULL = 3
 UPLOAD_MISALIGNMENT = 4
 
 # Payload offsets for response parsing
-UPLOAD_RESULT_STATUS_IDX = 4   # status byte in ASSET_UPLOAD_RESULT payload
+UPLOAD_RESULT_STATUS_IDX = 6   # status byte in ASSET_UPLOAD_RESULT payload
+                               # Original code: getUInt8AtOffet(rply, 6, header=2) = rply[8].
+                               # C HID library strips radio_msg_len, so rply[8] = 7th data byte.
+                               # Our raw format keeps radio_msg_len: payload = raw[3:], so
+                               # payload[6] = raw[9] = original rply[8].
 APP_INFO_IMAGES_IDX = 4        # u16 image count in APP_INFO_RESPONSE payload
 APP_INFO_SOUNDS_IDX = 6        # u16 sound count in APP_INFO_RESPONSE payload
 APP_INFO_BYTES_IDX = 8         # u32 byte count in APP_INFO_RESPONSE payload
@@ -318,6 +326,10 @@ ASSET_INV_ASSET_ID_IDX = 4    # u16 asset_id in ASSET_INVENTORY_RESPONSE payload
 ASSET_INV_ASSET_TYPE_IDX = 6  # u8 type in ASSET_INVENTORY_RESPONSE payload
 CRC_ORIG_IDX = 7              # u32 original CRC in ASSET_VERIFY_CRC_RESPONSE payload
 CRC_CALC_IDX = 11             # u32 calculated CRC in ASSET_VERIFY_CRC_RESPONSE payload
+# These same offsets appear in ASSET_UPLOAD_RESULT when the firmware
+# includes CRC details (observed on V1 hardware).
+UPLOAD_RESULT_ORIG_CRC_IDX = 7   # u32 original CRC in ASSET_UPLOAD_RESULT payload
+UPLOAD_RESULT_CALC_CRC_IDX = 11  # u32 calculated CRC in ASSET_UPLOAD_RESULT payload
 APP_LIST_APP_ID_IDX = 0       # u32 app_id in APP_LIST_RESPONSE_ITEM payload
 FB_WIDTH_IDX = 0              # u8 width in FRAME_BUFFER_DOWNLOAD_HEADER payload
 FB_HEIGHT_IDX = 1             # u8 height in FRAME_BUFFER_DOWNLOAD_HEADER payload

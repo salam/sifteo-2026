@@ -75,7 +75,7 @@ def _run_demo():
 
 
 def _install_siftapp(argv: list[str]) -> None:
-    """CLI helper to upload legacy .siftapp files as opaque app payloads."""
+    """CLI helper to install legacy .siftapp bundles."""
     parser = argparse.ArgumentParser(
         prog="python3 -m sifteo install-siftapp",
         description="Upload a legacy .siftapp bundle to cube flash.",
@@ -88,6 +88,17 @@ def _install_siftapp(argv: list[str]) -> None:
     parser.add_argument("--prefer-header-app-id", action="store_true",
                         help="Use .siftapp header internal ID when app-id is not set "
                              "(default uses crc32(filename) to avoid collisions).")
+    parser.add_argument(
+        "--install-mode",
+        choices=["auto", "bundle", "opaque"],
+        default="auto",
+        help=(
+            "Install strategy: "
+            "'bundle' decrypts/extracts .sftbndl assets, "
+            "'opaque' uploads raw .siftapp bytes, "
+            "'auto' tries bundle then falls back to opaque."
+        ),
+    )
     parser.add_argument("--asset-id", type=int, default=0,
                         help="Asset ID slot to store the bundle (default: 0).")
     parser.add_argument("--asset-type", type=int, choices=[0, 1], default=None,
@@ -95,13 +106,14 @@ def _install_siftapp(argv: list[str]) -> None:
                              "Default: auto-try compatibility variants.")
     parser.add_argument(
         "--payload-crc",
-        choices=["auto", "append", "none"],
+        choices=["auto", "append", "none", "learn"],
         default="auto",
         help=(
             "How to treat trailing payload CRC for .siftapp bytes: "
+            "'learn' probes the cube to discover its CRC then re-uploads (recommended), "
             "'append' adds/keeps a zlib CRC32 footer, "
             "'none' uploads bytes as-is, "
-            "'auto' tries both."
+            "'auto' uses 'learn' for bundle mode, 'none' for opaque."
         ),
     )
     parser.add_argument(
@@ -152,48 +164,62 @@ def _install_siftapp(argv: list[str]) -> None:
         any_failed = False
         for cube_id in targets:
             print(f"Installing on cube {cube_id}: {opts.path}")
-            if opts.payload_crc == "auto":
-                crc_modes = ["none", "append"]
-            else:
-                crc_modes = [opts.payload_crc]
-            if opts.payload_shape == "auto":
-                payload_shapes = ["container", "body"]
-            else:
-                payload_shapes = [opts.payload_shape]
-
-            if opts.app_id is None and not opts.prefer_header_app_id and opts.asset_type is None:
-                base_attempts = [
-                    {"app_id": None, "prefer_header_app_id": False, "asset_type": 0,
-                     "label": "crc32/type0"},
-                    {"app_id": None, "prefer_header_app_id": False, "asset_type": 1,
-                     "label": "crc32/type1"},
-                    {"app_id": None, "prefer_header_app_id": True, "asset_type": 0,
-                     "label": "header/type0"},
-                    {"app_id": None, "prefer_header_app_id": True, "asset_type": 1,
-                     "label": "header/type1"},
-                ]
-            else:
-                base_attempts = [{
-                    "app_id": opts.app_id,
-                    "prefer_header_app_id": opts.prefer_header_app_id,
-                    "asset_type": 0 if opts.asset_type is None else opts.asset_type,
-                    "label": "explicit",
-                }]
-
             attempts = []
-            for base in base_attempts:
-                for shape in payload_shapes:
-                    for crc_mode in crc_modes:
-                        label = base["label"]
-                        if len(payload_shapes) > 1:
-                            label += "/body" if shape == "body" else "/container"
-                        if len(crc_modes) > 1:
-                            label += "/raw" if crc_mode == "none" else "/crc"
-                        attempt = dict(base)
-                        attempt["payload_shape"] = shape
-                        attempt["payload_crc_mode"] = crc_mode
-                        attempt["label"] = label
-                        attempts.append(attempt)
+            if opts.install_mode == "opaque":
+                if opts.payload_crc == "auto":
+                    crc_modes = ["learn", "none", "append"]
+                else:
+                    crc_modes = [opts.payload_crc]
+                if opts.payload_shape == "auto":
+                    payload_shapes = ["container", "body"]
+                else:
+                    payload_shapes = [opts.payload_shape]
+
+                if opts.app_id is None and not opts.prefer_header_app_id and opts.asset_type is None:
+                    base_attempts = [
+                        {"app_id": None, "prefer_header_app_id": False, "asset_type": 0,
+                         "label": "crc32/type0"},
+                        {"app_id": None, "prefer_header_app_id": False, "asset_type": 1,
+                         "label": "crc32/type1"},
+                        {"app_id": None, "prefer_header_app_id": True, "asset_type": 0,
+                         "label": "header/type0"},
+                        {"app_id": None, "prefer_header_app_id": True, "asset_type": 1,
+                         "label": "header/type1"},
+                    ]
+                else:
+                    base_attempts = [{
+                        "app_id": opts.app_id,
+                        "prefer_header_app_id": opts.prefer_header_app_id,
+                        "asset_type": 0 if opts.asset_type is None else opts.asset_type,
+                        "label": "explicit",
+                    }]
+
+                for base in base_attempts:
+                    for shape in payload_shapes:
+                        for crc_mode in crc_modes:
+                            label = base["label"]
+                            if len(payload_shapes) > 1:
+                                label += "/body" if shape == "body" else "/container"
+                            if len(crc_modes) > 1:
+                                label += "/raw" if crc_mode == "none" else "/crc"
+                            attempt = dict(base)
+                            attempt["payload_shape"] = shape
+                            attempt["payload_crc_mode"] = crc_mode
+                            attempt["label"] = label
+                            attempts.append(attempt)
+            else:
+                attempt_crc_mode = "learn" if opts.payload_crc == "auto" else opts.payload_crc
+                attempt_shape = "container" if opts.payload_shape == "auto" else opts.payload_shape
+                attempts.append(
+                    {
+                        "app_id": opts.app_id,
+                        "prefer_header_app_id": opts.prefer_header_app_id,
+                        "asset_type": 0 if opts.asset_type is None else opts.asset_type,
+                        "payload_shape": attempt_shape,
+                        "payload_crc_mode": attempt_crc_mode,
+                        "label": opts.install_mode,
+                    }
+                )
 
             result = None
             last_exc = None
@@ -210,6 +236,7 @@ def _install_siftapp(argv: list[str]) -> None:
                         siftapp_path=opts.path,
                         app_id=attempt["app_id"],
                         prefer_header_app_id=attempt["prefer_header_app_id"],
+                        install_mode=opts.install_mode,
                         payload_shape=attempt["payload_shape"],
                         payload_crc_mode=attempt["payload_crc_mode"],
                         asset_id=opts.asset_id,
@@ -231,6 +258,8 @@ def _install_siftapp(argv: list[str]) -> None:
                 any_failed = True
                 print(f"  FAILED: {last_exc}")
                 if (
+                    opts.install_mode == "opaque"
+                    and
                     attempt_errors
                     and all(
                         isinstance(e, UploadError)
@@ -245,24 +274,40 @@ def _install_siftapp(argv: list[str]) -> None:
                     )
                 continue
 
-            print(f"  Stored as app_id={result.app_id} asset_id={result.asset_id}")
-            print(f"  Uploaded {result.bytes_uploaded} bytes (source: {result.app_id_source})")
+            if result.asset_count > 1:
+                print(
+                    f"  Stored as app_id={result.app_id} assets={result.asset_count} "
+                    f"(asset_id range {result.asset_id}-{result.asset_id + result.asset_count - 1})"
+                )
+            else:
+                print(f"  Stored as app_id={result.app_id} asset_id={result.asset_id}")
+            print(
+                f"  Uploaded {result.bytes_uploaded} bytes "
+                f"(source: {result.app_id_source}, mode: {result.install_mode})"
+            )
 
             if not opts.no_verify:
-                crc = assets.verify_crc(
-                    cube_id, result.app_id, result.asset_id
-                )
-                if crc and crc.valid:
-                    print("  CRC verification: VALID")
-                elif crc:
-                    any_failed = True
-                    print(
-                        "  CRC verification: MISMATCH "
-                        f"(orig=0x{crc.original_crc:08X}, calc=0x{crc.calculated_crc:08X})"
-                    )
+                valid = 0
+                mismatch = 0
+                timeout = 0
+                for aid in range(result.asset_id, result.asset_id + result.asset_count):
+                    crc = assets.verify_crc(cube_id, result.app_id, aid)
+                    if crc and crc.valid:
+                        valid += 1
+                    elif crc:
+                        mismatch += 1
+                    else:
+                        timeout += 1
+
+                if mismatch == 0 and timeout == 0:
+                    print(f"  CRC verification: VALID ({valid}/{result.asset_count})")
                 else:
                     any_failed = True
-                    print("  CRC verification: TIMEOUT")
+                    print(
+                        "  CRC verification: "
+                        f"{valid} valid, {mismatch} mismatch, {timeout} timeout "
+                        f"(total={result.asset_count})"
+                    )
 
         if any_failed:
             sys.exit(1)

@@ -239,6 +239,18 @@ class Cube:
                         self.neighbors[my_side] = (neighbor_id, neighbor_side)
                 return NeighborEvent(self.id, my_side, neighbor_id, neighbor_side)
 
+        elif op == Op.NEIGHBOR_FULL_REPORT:
+            # Payload: [side0_id, side0_side, side1_id, side1_side, ...]
+            for side in range(NUM_SIDES):
+                offset = side * 2
+                if offset + 1 < len(payload):
+                    neighbor_id = payload[offset]
+                    neighbor_side = payload[offset + 1]
+                    if neighbor_id == NULL_SIFTABLE_ID:
+                        self.neighbors[side] = None
+                    else:
+                        self.neighbors[side] = (neighbor_id, neighbor_side)
+
         elif op == Op.SHAKE:
             return ShakeEvent(self.id)
 

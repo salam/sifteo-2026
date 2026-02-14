@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+# Cover images shipped under gui/web/covers/, keyed by game stem.
+_COVERS_DIR = Path(__file__).parent / "web" / "covers"
+
 # Hand-curated metadata for each .siftapp bundle.
 # Keys are the exact filename stems (without .siftapp).
 GAMES: dict[str, dict] = {
@@ -134,11 +137,19 @@ def _accent_color(name: str) -> str:
     return f"hsl({hue}, 65%, 55%)"
 
 
+def _find_cover(stem: str) -> str | None:
+    """Return the cover image filename (e.g. 'gems.png') if one exists."""
+    for ext in (".png", ".jpg"):
+        if (_COVERS_DIR / f"{stem}{ext}").exists():
+            return f"{stem}{ext}"
+    return None
+
+
 def discover_games(siftapp_dir: Path) -> list[dict]:
     """Scan the Siftapps directory and return enriched game metadata.
 
     Returns a list of dicts sorted by display_name, each containing:
-        name, display_name, category, description, color, path, size_kb
+        name, display_name, category, description, color, cover, path, size_kb
     """
     games = []
     for path in sorted(siftapp_dir.glob("*.siftapp"), key=lambda p: p.name.lower()):
@@ -150,6 +161,7 @@ def discover_games(siftapp_dir: Path) -> list[dict]:
             "category": meta.get("category", "game"),
             "description": meta.get("description", ""),
             "color": _accent_color(stem),
+            "cover": _find_cover(stem),
             "path": str(path),
             "size_kb": path.stat().st_size // 1024,
         })

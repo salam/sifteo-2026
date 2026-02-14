@@ -89,7 +89,10 @@
     <!-- Dashboard (connected) -->
     <main id="dashboard" class="screen" style="display:none">
         <div class="dashboard-header">
-            <h2>Games</h2>
+            <div class="tab-nav">
+                <button id="tab-games" class="tab-btn active" onclick="switchTab('games')">Games</button>
+                <button id="tab-observer" class="tab-btn" onclick="switchTab('observer')">Observer</button>
+            </div>
             <div class="dashboard-controls">
                 <label for="cube-select">Install on:</label>
                 <select id="cube-select">
@@ -99,7 +102,25 @@
             </div>
         </div>
 
-        <div id="game-grid" class="game-grid"></div>
+        <!-- Games tab -->
+        <div id="tab-content-games" class="tab-content">
+            <div class="game-toolbar">
+                <div class="toolbar-left">
+                    <select id="filter-select" class="toolbar-select">
+                        <option value="all">All</option>
+                    </select>
+                </div>
+                <div class="toolbar-right">
+                    <div id="sort-buttons" class="sort-buttons"></div>
+                </div>
+            </div>
+            <div id="game-grid" class="game-grid"></div>
+        </div>
+
+        <!-- Observer tab -->
+        <div id="tab-content-observer" class="tab-content" style="display:none">
+            <div id="observer-area" class="observer-area"></div>
+        </div>
 
         <div id="cube-bar" class="cube-bar">
             <div class="cube-bar-label">Cubes</div>

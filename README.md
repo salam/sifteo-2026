@@ -42,13 +42,18 @@ sudo python3 -m sifteo demo
 # Install a legacy .siftapp bundle onto connected cube(s)
 sudo python3 -m sifteo install-siftapp sifteo-gen1-redux/payload/Siftapps/siftsays.siftapp
 
-# Optional: payload extraction mode from the .siftapp container.
-# auto (default) tries full container bytes + 16-byte-header-stripped body bytes.
-sudo python3 -m sifteo install-siftapp path/to/app.siftapp --payload-shape auto
+# Optional: force bundle extraction mode (decrypt + unzip + .sftbndl parsing)
+sudo python3 -m sifteo install-siftapp path/to/app.siftapp --install-mode bundle
+
+# Optional fallback/compat mode: upload opaque container bytes directly
+sudo python3 -m sifteo install-siftapp path/to/app.siftapp --install-mode opaque
 
 # Optional: use header-derived app IDs (legacy-style). Default uses
 # crc32(filename) to avoid ID collisions between archived bundles.
 sudo python3 -m sifteo install-siftapp path/to/app.siftapp --prefer-header-app-id
+
+# Optional (opaque mode only): payload extraction and CRC compatibility toggles
+sudo python3 -m sifteo install-siftapp path/to/app.siftapp --install-mode opaque --payload-shape auto --payload-crc auto
 
 # Or use the helper by short app name + cube target
 # ("all" => all detected cubes)
@@ -75,8 +80,8 @@ sudo python3 examples/hello_world.py
 
 Root access is required on macOS because the kernel HID driver must be detached to get raw USB interrupt transfer access to the dongle. (IOHIDManager's `IOHIDDeviceSetReport` does not work for this device's interrupt OUT endpoint.)
 
-`.siftapp` support uploads preserved legacy bundle binaries as opaque app payloads to cube flash. Running legacy .NET game logic is still outside the Python runtime.
-By default, the installer auto-tries both raw payload bytes and an appended trailing CRC footer (`--payload-crc auto`), and both container/body payload extraction modes (`--payload-shape auto`).
+`.siftapp` support now defaults to legacy bundle installation: decrypt the container, open the embedded ZIP, parse `.sftbndl` image bundles, and upload extracted assets to cube flash. `auto` mode falls back to opaque container upload only when bundle extraction is not possible. Running legacy .NET game logic is still outside the Python runtime.
+Opaque compatibility tuning remains available via `--install-mode opaque` with `--payload-crc` and `--payload-shape`.
 
 ### Upload Speed Tuning
 

@@ -16,7 +16,7 @@
 
 ## Game Upload (Full .siftapp Support)
 
-- [x] **Understand the .siftapp format** - Investigated: `.siftapp` files are legacy bundled game packages tied to the original SiftRunner stack. In this project we now support **opaque `.siftapp` binary install** (uploading bundle bytes to cube flash with inferred app IDs), while full legacy runtime execution remains out of scope. Python `BaseApp` subclasses remain the native replacement for active game logic.
+- [x] **Understand the .siftapp format** - Investigated: `.siftapp` files are encrypted legacy bundles from the original SiftRunner stack. This project now supports **bundle-based install** (decrypt, unzip, parse `.sftbndl` image assets, upload to cube flash) with opaque upload fallback for non-extractable containers. Full legacy .NET runtime execution remains out of scope; Python `BaseApp` subclasses remain the native replacement for active game logic.
 
 - [x] **App registration on cubes** - `BaseApp` now supports declarative asset management: set `APP_NAME` (auto-generates 32-bit app_id via CRC32) or `APP_ID` (explicit), plus `IMAGES` and `SOUNDS` dicts mapping names to file paths. Assets are smart-synced to all cubes before `setup()` is called (only missing assets are uploaded). Use `self.app_id` and `self.asset_id("name")` in game code. See `src/sifteo/app.py` and `src/sifteo/assets.py`.
 
